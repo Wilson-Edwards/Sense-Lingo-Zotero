@@ -34,6 +34,7 @@ declare namespace _ZoteroTypes {
       promptProfileSentence: string;
       promptProfiles: string;
       showInPopup: boolean;
+      autoTranslate: boolean;
       shortcutEnabled: boolean;
       requestTimeoutMs: number;
       debug: boolean;

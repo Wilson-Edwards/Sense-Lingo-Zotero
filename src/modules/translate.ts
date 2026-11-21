@@ -25,6 +25,7 @@ import { chatCompletion } from "./llm/client";
 import { parseProfiles, type PromptProfiles } from "./llm/prompt";
 import { renderPromptFor } from "./llm/render";
 import {
+  isConfigured,
   resolveProviderConfig,
   type EffectiveProviderConfig,
 } from "./llm/providers";
@@ -82,6 +83,24 @@ export function readSettings(): PluginSettings {
     wordProfileId: getStringPref("promptProfileWord", "word"),
     sentenceProfileId: getStringPref("promptProfileSentence", "sentence"),
   };
+}
+
+/**
+ * Lightweight provider check for the auto-translate trigger.
+ *
+ * Auto translation must stay silent when the plugin is not configured yet:
+ * popping an error panel on every selection would be unusable. The regular
+ * button / shortcut still reports the missing key.
+ */
+export function hasUsableProvider(): boolean {
+  return isConfigured(
+    resolveProviderConfig({
+      provider: getStringPref("provider", "openai"),
+      apiKey: getStringPref("apiKey"),
+      baseURL: getStringPref("baseURL"),
+      model: getStringPref("model"),
+    }),
+  );
 }
 
 export interface TranslateInput {

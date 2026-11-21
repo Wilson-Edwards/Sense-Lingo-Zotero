@@ -30,6 +30,7 @@ pref-profiles-invalid-json = Invalid JSON: { $detail }
 
 pref-head-ui = Interface & advanced
 pref-show-in-popup = Show the translate button in the selection popup
+pref-auto-translate = Translate automatically when text is selected (no button click)
 pref-shortcut = Enable Ctrl/⌘ + Shift + T
 pref-debug = Verbose logs (Help → Debug Output Logging)
 pref-timeout = Request timeout (ms)

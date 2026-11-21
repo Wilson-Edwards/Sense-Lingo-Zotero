@@ -11,6 +11,8 @@ import { getString } from "../../utils/locale";
 import { warn } from "../../utils/logger";
 import { getBooleanPref } from "../../utils/prefs";
 import { translateAndShow } from "../controller";
+import { hasUsableProvider } from "../translate";
+import { shouldStartAutoTranslate } from "./autoTranslate";
 import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
@@ -101,6 +103,20 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   rememberSelection(doc, text, anchor);
   const itemID = event.reader?.itemID;
   attachShortcutToDoc(doc, itemID);
+
+  // Auto translation is independent of the popup button: the button may stay
+  // visible for a manual retry while every new selection already translates.
+  // Silence when the provider is unconfigured so we never spam error panels.
+  if (
+    getBooleanPref("autoTranslate", false) &&
+    hasUsableProvider() &&
+    shouldStartAutoTranslate(doc, text)
+  ) {
+    void translateAndShow(
+      { doc, attachmentItemID: itemID, reader: event.reader, anchor },
+      text,
+    );
+  }
 
   if (!getBooleanPref("showInPopup", true)) {
     return;

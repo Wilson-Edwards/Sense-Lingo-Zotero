@@ -29,6 +29,7 @@ pref("promptProfiles", "");
 
 // UI
 pref("showInPopup", true);
+pref("autoTranslate", false);
 pref("shortcutEnabled", true);
 pref("requestTimeoutMs", 30000);
 pref("debug", false);

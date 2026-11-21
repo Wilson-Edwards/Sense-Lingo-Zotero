@@ -55,6 +55,7 @@
 | ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；词、句模板各存一份，可多套切换         |
 | 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                          |
 | ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                          |
+| 🪄 自动翻译        | 选中文本立即自动出译文，无需点击按钮；默认关闭，避免误触发与额外费用                                            |
 | 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                 |
 | 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                              |
 
@@ -121,7 +122,7 @@
 ### 关键步骤说明
 
 **① 捕获划词**
-监听 Zotero 阅读器 `renderTextSelectionPopup`，在原生弹窗中注入"翻译"按钮；同时注册快捷键，直接对当前 selection 触发翻译。
+监听 Zotero 阅读器 `renderTextSelectionPopup`，在原生弹窗中注入"翻译"按钮；同时注册快捷键，直接对当前 selection 触发翻译。开启 `autoTranslate` 后，弹窗一出现就自动发起翻译，不再需要点击按钮（同一选区在 2 秒内的重复渲染会被去重）。
 
 **② 取选中文本**
 `event.params.annotation.text` 与 `reader._internalReader._lastSelectText` 二选一：优先取 annotation 文本，回退到 selection 缓存；两者都为空时提示用户重新划词。
@@ -207,7 +208,7 @@ npm run build
 
 1. 打开任意 PDF / EPUB 附件；
 2. 选中文本——**选一个词**或**选一整句**都可以，插件自动判定类型；
-3. 点击弹窗中的 **翻译** 按钮（或按快捷键 `Ctrl/⌘ + Shift + T`）；
+3. 点击弹窗中的 **翻译** 按钮（或按快捷键 `Ctrl/⌘ + Shift + T`）；也可以在设置里打开 **自动翻译**，选中文本后无需任何点击，译文面板会直接出现；
 4. 结果面板显示：**译文**、**本次判定类型**（词 / 句）、**使用的模板名**、命中的原句、模型与耗时；
 5. 判定不符合预期时，面板顶部可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；
 6. 面板内还可展开提示词临时改一版再试，满意后存为新模板。
@@ -252,6 +253,7 @@ npm run build
 | `promptProfileSentence`    | string       | `sentence`    | **划句**时使用的提示词模板 id                                                                               |
 | `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合，词模板与句模板分别存放                                                                      |
 | `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                  |
+| `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，无需点击按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过                      |
 | `shortcutEnabled`          | boolean      | `true`        | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                         |
 | `requestTimeoutMs`         | number       | `30000`       | 请求超时；超时后提示重试而非静默失败                                                                        |
 | `debug`                    | boolean      | `false`       | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                     |
@@ -468,7 +470,8 @@ npm run lint:check  # prettier --check + eslint
 │   │   ├── translate.ts            # 主管线：类型 → 上下文 → 提示词 → LLM
 │   │   ├── controller.ts           # UI 与管线之间：状态机 + 错误文案
 │   │   ├── reader/
-│   │   │   ├── selectionPopup.ts   # 划词弹窗按钮注入
+│   │   │   ├── selectionPopup.ts   # 划词弹窗按钮注入 + 自动翻译触发
+│   │   │   ├── autoTranslate.ts    # 自动翻译去重守卫（纯函数）
 │   │   │   ├── selectionKind.ts    # word / sentence 判定（纯函数）
 │   │   │   ├── sentence.ts         # 句子定位 + 前后句（纯函数）
 │   │   │   ├── textSource.ts       # Zotero.Fulltext 取全文 + 缓存

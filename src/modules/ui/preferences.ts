@@ -42,6 +42,7 @@ const BOOL_KEYS = [
   "useContext",
   "sentenceContextNeighbors",
   "showInPopup",
+  "autoTranslate",
   "shortcutEnabled",
   "debug",
 ] as const satisfies readonly PrefKey[];
