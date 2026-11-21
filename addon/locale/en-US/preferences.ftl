@@ -2,6 +2,7 @@ pref-title = Sense Lingo
 
 pref-head-provider = Provider
 pref-provider = Preset
+pref-provider-hint = Each provider keeps its own API key, base URL and model; switching presets won't overwrite them
 pref-api-key = API key
 pref-base-url = Base URL (blank = preset)
 pref-model = Model (blank = preset)

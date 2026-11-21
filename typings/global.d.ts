@@ -20,6 +20,7 @@ declare namespace _ZoteroTypes {
       apiKey: string;
       baseURL: string;
       model: string;
+      providerConfigs: string;
       temperature: string;
       maxTokens: number;
       targetLang: string;

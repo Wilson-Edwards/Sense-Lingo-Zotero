@@ -240,6 +240,7 @@ npm run build
 | `apiKey`                   | string       | `""`          | API Key。保存在 Zotero prefs 中（**明文**，见[隐私与安全](#隐私与安全)）                                                   |
 | `baseURL`                  | string       | 跟随 provider | 接口地址，可在 `custom` 下自由填写，自动补 `/v1` 时需注意末尾斜杠                                                          |
 | `model`                    | string       | 跟随 provider | 模型名，如 `gpt-4o-mini` / `deepseek-chat`                                                                                 |
+| `providerConfigs`          | string(JSON) | `""`          | 按服务商分别保存的 `apiKey` / `baseURL` / `model`；切换预设时自动写入/读出，运行时的生效值仍是上面三个键                   |
 | `temperature`              | string       | `"0.3"`       | 越低越稳定，翻译建议 0～0.5。**按字符串存储**，因为 Firefox pref 只支持 int/bool/string，float 会被静默截断                |
 | `maxTokens`                | number       | `1024`        | 单次回复上限                                                                                                               |
 | `targetLang`               | string       | `zh-CN`       | 目标语言；设为 `auto` 时按 Zotero 界面语言推断                                                                             |
@@ -267,6 +268,8 @@ npm run build
 | `openai`   | `https://api.openai.com/v1`   | `gpt-4o-mini`   |
 | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | `custom`   | 用户填写                      | 用户填写        |
+
+切换服务商预设时，设置页会先把当前服务商填写的 `apiKey` / `baseURL` / `model` 存入 `providerConfigs`，再载入目标服务商上一次保存的那一份；目标服务商从未配置过时三个字段会清空（留空即使用该预设的默认地址与模型）。因此 OpenAI 与 DeepSeek 的 Key、接口地址和模型互不覆盖，来回切换后仍是各自的值。
 
 ## 提示词自定义
 

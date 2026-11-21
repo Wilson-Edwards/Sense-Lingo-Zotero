@@ -9,7 +9,17 @@
 
 import { getString } from "../../utils/locale";
 import { getPref, setPref, setPrefRaw } from "../../utils/prefs";
-import { PROVIDER_IDS, PROVIDERS, normalizeProviderId } from "../llm/providers";
+import {
+  PROVIDER_FIELD_KEYS,
+  PROVIDER_IDS,
+  PROVIDERS,
+  normalizeProviderId,
+  parseProviderCredentials,
+  serializeProviderCredentials,
+  switchProviderCredentials,
+  type ProviderCredentialValues,
+  type ProviderId,
+} from "../llm/providers";
 import {
   DEFAULT_PROFILES,
   cloneProfiles,
@@ -151,6 +161,48 @@ function updatePlaceholders(win: Window): void {
   }
 }
 
+/** Current contents of the three provider-owned inputs. */
+function readProviderInputs(win: Window): ProviderCredentialValues {
+  return {
+    apiKey: byId<HTMLInputElement>(win, "apiKey")?.value.trim() ?? "",
+    baseURL: byId<HTMLInputElement>(win, "baseURL")?.value.trim() ?? "",
+    model: byId<HTMLInputElement>(win, "model")?.value.trim() ?? "",
+  };
+}
+
+function writeProviderInputs(
+  win: Window,
+  values: ProviderCredentialValues,
+): void {
+  for (const key of PROVIDER_FIELD_KEYS) {
+    const input = byId<HTMLInputElement>(win, key);
+    if (input) {
+      input.value = values[key];
+    }
+    setPref(key, values[key]);
+  }
+}
+
+/**
+ * Switching presets must also switch the saved key / URL / model.
+ *
+ * The flat prefs always describe the active provider (the pipeline reads them),
+ * while `providerConfigs` remembers the other providers, so going
+ * OpenAI -> DeepSeek -> OpenAI restores each side's own values.
+ */
+function switchProvider(win: Window, next: ProviderId): void {
+  const previous = normalizeProviderId(getPref("provider"));
+  const { credentials, values } = switchProviderCredentials(
+    parseProviderCredentials(getPref("providerConfigs")),
+    previous,
+    next,
+    readProviderInputs(win),
+  );
+  setPref("providerConfigs", serializeProviderCredentials(credentials));
+  setPref("provider", next);
+  writeProviderInputs(win, values);
+}
+
 function updateProfileDatalist(win: Window): void {
   const list = byId<HTMLDataListElement>(win, "profile-list");
   if (!list) {
@@ -214,7 +266,7 @@ const bound = new WeakSet<Window>();
 function bindEvents(win: Window): void {
   const providerSelect = byId<HTMLSelectElement>(win, "provider");
   providerSelect?.addEventListener("change", () => {
-    setPref("provider", providerSelect.value);
+    switchProvider(win, normalizeProviderId(providerSelect.value));
     updatePlaceholders(win);
   });
 

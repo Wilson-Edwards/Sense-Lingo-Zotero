@@ -2,6 +2,7 @@ pref-title = Sense Lingo
 
 pref-head-provider = 服务商
 pref-provider = 服务商预设
+pref-provider-hint = 每个服务商单独保存 API Key、接口地址与模型，切换预设不会互相覆盖
 pref-api-key = API Key
 pref-base-url = 接口地址（留空使用预设）
 pref-model = 模型（留空使用预设）

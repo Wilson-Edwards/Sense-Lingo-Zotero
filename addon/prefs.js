@@ -5,6 +5,8 @@ pref("provider", "openai");
 pref("apiKey", "");
 pref("baseURL", "");
 pref("model", "");
+// Per-provider apiKey/baseURL/model, keyed by provider id (JSON).
+pref("providerConfigs", "");
 pref("temperature", "0.3");
 pref("maxTokens", 1024);
 

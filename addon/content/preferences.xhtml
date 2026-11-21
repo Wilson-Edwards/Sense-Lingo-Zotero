@@ -1,7 +1,8 @@
 <html:style>
   .sl-section { margin-bottom: 12px; } .sl-row { margin-bottom: 6px; } .sl-row
-  label { min-width: 180px; } .sl-section h3 { font-size: 13px; margin: 6px 0
-  4px; }
+  label { min-width: 180px; } .sl-hint { color: #6b7280; font-size: 11px;
+  margin: 0 0 6px 186px; } .sl-section h3 { font-size: 13px; margin: 6px 0 4px;
+  }
 </html:style>
 
 <linkset>
@@ -18,6 +19,8 @@
       <html:label for="sl-provider" data-l10n-id="pref-provider"></html:label>
       <html:select id="sl-provider" style="min-width: 240px"></html:select>
     </hbox>
+
+    <html:div class="sl-hint" data-l10n-id="pref-provider-hint"></html:div>
 
     <hbox align="center" class="sl-row">
       <html:label for="sl-apiKey" data-l10n-id="pref-api-key"></html:label>

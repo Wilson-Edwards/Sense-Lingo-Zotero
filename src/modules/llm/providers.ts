@@ -98,3 +98,125 @@ export function resolveProviderConfig(
 export function isConfigured(config: EffectiveProviderConfig): boolean {
   return Boolean(config.apiKey && config.baseURL && config.model);
 }
+
+/** The fields that belong to one provider rather than to the plugin. */
+export const PROVIDER_FIELD_KEYS = ["apiKey", "baseURL", "model"] as const;
+
+export interface ProviderCredentialValues {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
+/** Saved values per provider, keyed by provider id. */
+export type ProviderCredentials = Partial<
+  Record<ProviderId, ProviderCredentialValues>
+>;
+
+export const EMPTY_PROVIDER_CREDENTIALS: ProviderCredentialValues = {
+  apiKey: "",
+  baseURL: "",
+  model: "",
+};
+
+function normalizeCredentialValues(value: unknown): ProviderCredentialValues {
+  const raw =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    apiKey: typeof raw.apiKey === "string" ? raw.apiKey : "",
+    baseURL: typeof raw.baseURL === "string" ? raw.baseURL : "",
+    model: typeof raw.model === "string" ? raw.model : "",
+  };
+}
+
+/** Blank fields mean "use the preset", so an all-blank entry is not worth keeping. */
+function hasCredentialValues(values: ProviderCredentialValues): boolean {
+  return PROVIDER_FIELD_KEYS.some((key) => values[key].trim() !== "");
+}
+
+/**
+ * Read the `providerConfigs` pref.
+ *
+ * Stored as JSON for the same reason as `promptProfiles`: pref values are
+ * limited to int/bool/string, and we need one record per provider. Anything
+ * malformed is dropped instead of breaking the settings pane.
+ */
+export function parseProviderCredentials(
+  raw: string | null | undefined,
+): ProviderCredentials {
+  if (!raw || !raw.trim()) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  const record = parsed as Record<string, unknown>;
+  const credentials: ProviderCredentials = {};
+  for (const id of PROVIDER_IDS) {
+    if (!(id in record)) {
+      continue;
+    }
+    const values = normalizeCredentialValues(record[id]);
+    if (hasCredentialValues(values)) {
+      credentials[id] = values;
+    }
+  }
+  return credentials;
+}
+
+/** Serialize for storage; empty records are omitted, an empty map becomes "". */
+export function serializeProviderCredentials(
+  credentials: ProviderCredentials,
+): string {
+  const cleaned: ProviderCredentials = {};
+  for (const id of PROVIDER_IDS) {
+    const values = credentials[id];
+    if (values && hasCredentialValues(values)) {
+      cleaned[id] = normalizeCredentialValues(values);
+    }
+  }
+  return Object.keys(cleaned).length ? JSON.stringify(cleaned) : "";
+}
+
+export interface ProviderSwitchResult {
+  credentials: ProviderCredentials;
+  /** Values the settings pane should show for `to`. */
+  values: ProviderCredentialValues;
+}
+
+/**
+ * Park the active values under `from` and load the saved values of `to`.
+ *
+ * Switching presets must not leak one provider's key / URL / model into the
+ * other, but the pipeline always reads the flat prefs, so the pane keeps those
+ * in sync with `providerConfigs` on every switch.
+ */
+export function switchProviderCredentials(
+  credentials: ProviderCredentials,
+  from: ProviderId,
+  to: ProviderId,
+  active: ProviderCredentialValues,
+): ProviderSwitchResult {
+  if (from === to) {
+    return { credentials, values: { ...active } };
+  }
+  const parked: ProviderCredentials = { ...credentials };
+  const current = normalizeCredentialValues(active);
+  if (hasCredentialValues(current)) {
+    parked[from] = current;
+  } else {
+    delete parked[from];
+  }
+  return {
+    credentials: parked,
+    values: { ...(parked[to] ?? EMPTY_PROVIDER_CREDENTIALS) },
+  };
+}
