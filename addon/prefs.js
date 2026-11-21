@@ -31,5 +31,6 @@ pref("promptProfiles", "");
 pref("showInPopup", true);
 pref("autoTranslate", false);
 pref("shortcutEnabled", true);
+pref("popupFontSize", 12);
 pref("requestTimeoutMs", 30000);
 pref("debug", false);

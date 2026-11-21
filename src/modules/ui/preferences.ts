@@ -16,6 +16,7 @@ import {
   parseProfiles,
   stringifyProfiles,
 } from "../llm/prompt";
+import { normalizePopupFontSize } from "../reader/popupFontSize";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -114,6 +115,14 @@ function syncFromPrefs(win: Window): void {
     if (input) {
       input.checked = Boolean(getPref(key));
     }
+  }
+
+  // Kept out of NUMBER_KEYS because the value is clamped before it is stored.
+  const fontSizeInput = byId<HTMLInputElement>(win, "popupFontSize");
+  if (fontSizeInput) {
+    fontSizeInput.value = String(
+      normalizePopupFontSize(getPref("popupFontSize")),
+    );
   }
 
   const textarea = byId<HTMLTextAreaElement>(win, "promptProfiles");
@@ -234,6 +243,14 @@ function bindEvents(win: Window): void {
     input?.addEventListener("command", () => setPrefRaw(key, input.checked));
     input?.addEventListener("change", () => setPrefRaw(key, input.checked));
   }
+
+  const fontSizeInput = byId<HTMLInputElement>(win, "popupFontSize");
+  fontSizeInput?.addEventListener("change", () => {
+    const size = normalizePopupFontSize(fontSizeInput.value);
+    // Show the clamped value so a typo (or a cleared field) cannot look saved.
+    fontSizeInput.value = String(size);
+    setPref("popupFontSize", size);
+  });
 
   const textarea = byId<HTMLTextAreaElement>(win, "promptProfiles");
   textarea?.addEventListener("change", () => saveProfiles(win));

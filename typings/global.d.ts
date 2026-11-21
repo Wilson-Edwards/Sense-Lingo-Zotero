@@ -36,6 +36,7 @@ declare namespace _ZoteroTypes {
       showInPopup: boolean;
       autoTranslate: boolean;
       shortcutEnabled: boolean;
+      popupFontSize: number;
       requestTimeoutMs: number;
       debug: boolean;
     };

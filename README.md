@@ -255,6 +255,7 @@ npm run build
 | `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合，词模板与句模板分别存放                                                                                     |
 | `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                                 |
 | `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，译文直接出现在划词弹窗内；开启后自动隐藏翻译按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过 |
+| `popupFontSize`            | number       | `12`          | 划词弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽，保持每行字数基本不变                                          |
 | `shortcutEnabled`          | boolean      | `true`        | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                                        |
 | `requestTimeoutMs`         | number       | `30000`       | 请求超时；超时后提示重试而非静默失败                                                                                       |
 | `debug`                    | boolean      | `false`       | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                                    |

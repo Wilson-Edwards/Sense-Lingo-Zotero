@@ -13,13 +13,18 @@
 import { config } from "../../../package.json";
 import { getString } from "../../utils/locale";
 import { warn } from "../../utils/logger";
-import { getBooleanPref } from "../../utils/prefs";
+import { getBooleanPref, getNumberPref } from "../../utils/prefs";
 import {
   translateInline,
   type InlineTranslation,
   type ReaderTarget,
 } from "../controller";
 import { hasUsableProvider } from "../translate";
+import {
+  normalizePopupFontSize,
+  POPUP_FONT_SIZE_DEFAULT,
+  popupMaxWidth,
+} from "./popupFontSize";
 import { peekPopupTranslation, translateInPopup } from "./popupTranslation";
 import { collectReaderDocuments } from "./readerText";
 import {
@@ -45,18 +50,19 @@ const BUTTON_STYLE = [
  * The native popup caps itself at 198px, which is too narrow for a sentence
  * translation. `width:max-content` keeps short words compact while `max-width`
  * wraps longer output instead of overflowing the page.
+ *
+ * Font size and the matching max-width come from the `popupFontSize` pref and
+ * are applied in `createResultSlot()`.
  */
 const RESULT_STYLE = [
   "display:none",
   "box-sizing:border-box",
   "width:max-content",
-  "max-width:320px",
   "max-height:40vh",
   "overflow:auto",
   "white-space:pre-wrap",
   "word-break:break-word",
   "user-select:text",
-  "font-size:12px",
   "line-height:1.5",
   "color:#1a1a1a",
 ].join(";");
@@ -121,9 +127,12 @@ function captureAnchor(
   return liveAnchor;
 }
 
-function createResultSlot(doc: Document): HTMLDivElement {
+function createResultSlot(doc: Document, fontSize: number): HTMLDivElement {
   const slot = doc.createElement("div");
   slot.style.cssText = RESULT_STYLE;
+  slot.style.fontSize = `${fontSize}px`;
+  // Widen with the font so the characters per line stay roughly stable.
+  slot.style.maxWidth = `${popupMaxWidth(fontSize)}px`;
   return slot;
 }
 
@@ -153,7 +162,10 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   const itemID = event.reader?.itemID;
   attachShortcutToDoc(doc, itemID);
 
-  const slot = createResultSlot(doc);
+  const fontSize = normalizePopupFontSize(
+    getNumberPref("popupFontSize", POPUP_FONT_SIZE_DEFAULT),
+  );
+  const slot = createResultSlot(doc, fontSize);
 
   // The popup is a flex column capped at 198px; lift the cap so a translation
   // can use a readable width. Clamp it to the space left of the viewport edge
@@ -164,7 +176,8 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
     try {
       const viewportWidth = doc.documentElement.clientWidth;
       const available = viewportWidth - popup.getBoundingClientRect().left - 32;
-      slot.style.maxWidth = `${Math.max(184, Math.min(320, available))}px`;
+      const preferred = popupMaxWidth(fontSize);
+      slot.style.maxWidth = `${Math.max(184, Math.min(preferred, available))}px`;
     } catch {
       // Keep the CSS default when layout is not measurable yet.
     }

@@ -32,6 +32,7 @@ pref-head-ui = 界面与高级
 pref-show-in-popup = 在划词弹窗中显示翻译按钮
 pref-auto-translate = 选中文本后自动翻译（无需点击按钮）
 pref-shortcut = 启用快捷键 Ctrl/⌘ + Shift + T
+pref-popup-font-size = 划词弹窗内译文字号（px，8–32）
 pref-debug = 输出调试日志（帮助 → 调试输出）
 pref-timeout = 请求超时（毫秒）
 
