@@ -1,0 +1,240 @@
+<html:style>
+  .sl-section { margin-bottom: 12px; } .sl-row { margin-bottom: 6px; } .sl-row
+  label { min-width: 180px; } .sl-section h3 { font-size: 13px; margin: 6px 0
+  4px; }
+</html:style>
+
+<linkset>
+  <html:link rel="localization" href="__addonRef__-preferences.ftl" />
+</linkset>
+
+<groupbox>
+  <label><html:h2 data-l10n-id="pref-title"></html:h2></label>
+
+  <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-provider"></html:h3></label>
+
+    <hbox align="center" class="sl-row">
+      <html:label for="sl-provider" data-l10n-id="pref-provider"></html:label>
+      <html:select id="sl-provider" style="min-width: 240px"></html:select>
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label for="sl-apiKey" data-l10n-id="pref-api-key"></html:label>
+      <html:input
+        type="password"
+        id="sl-apiKey"
+        style="min-width: 240px"
+        placeholder="sk-..."
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label for="sl-baseURL" data-l10n-id="pref-base-url"></html:label>
+      <html:input type="text" id="sl-baseURL" style="min-width: 240px" />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label for="sl-model" data-l10n-id="pref-model"></html:label>
+      <html:input type="text" id="sl-model" style="min-width: 240px" />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-temperature"
+        data-l10n-id="pref-temperature"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-temperature"
+        min="0"
+        max="2"
+        step="0.1"
+        style="width: 80px"
+      />
+      <html:label
+        for="sl-maxTokens"
+        data-l10n-id="pref-max-tokens"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-maxTokens"
+        min="1"
+        step="1"
+        style="width: 90px"
+      />
+    </hbox>
+  </vbox>
+
+  <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-kind"></html:h3></label>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-selectionKindMode"
+        data-l10n-id="pref-kind-mode"
+      ></html:label>
+      <html:select
+        id="sl-selectionKindMode"
+        style="min-width: 240px"
+      ></html:select>
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-wordMaxWords"
+        data-l10n-id="pref-word-max-words"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-wordMaxWords"
+        min="1"
+        step="1"
+        style="width: 80px"
+      />
+      <html:label
+        for="sl-wordMaxChars"
+        data-l10n-id="pref-word-max-chars"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-wordMaxChars"
+        min="1"
+        step="1"
+        style="width: 90px"
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-promptProfileWord"
+        data-l10n-id="pref-profile-word"
+      ></html:label>
+      <html:input
+        type="text"
+        id="sl-promptProfileWord"
+        list="sl-profile-list"
+        style="min-width: 240px"
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-promptProfileSentence"
+        data-l10n-id="pref-profile-sentence"
+      ></html:label>
+      <html:input
+        type="text"
+        id="sl-promptProfileSentence"
+        list="sl-profile-list"
+        style="min-width: 240px"
+      />
+    </hbox>
+
+    <html:datalist id="sl-profile-list"></html:datalist>
+  </vbox>
+
+  <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-context"></html:h3></label>
+
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-useContext" />
+      <html:label
+        for="sl-useContext"
+        data-l10n-id="pref-use-context"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-sentenceContextNeighbors" />
+      <html:label
+        for="sl-sentenceContextNeighbors"
+        data-l10n-id="pref-context-neighbors"
+      ></html:label>
+    </html:div>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-maxSentenceChars"
+        data-l10n-id="pref-max-sentence-chars"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-maxSentenceChars"
+        min="40"
+        step="10"
+        style="width: 90px"
+      />
+    </hbox>
+  </vbox>
+
+  <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-prompts"></html:h3></label>
+    <html:div
+      id="sl-profiles-status"
+      style="color: #b42318; min-height: 14px"
+    ></html:div>
+    <html:textarea
+      id="sl-promptProfiles"
+      spellcheck="false"
+      style="
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 200px;
+        font:
+          12px/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      "
+    ></html:textarea>
+    <hbox style="margin-top: 6px">
+      <html:button id="sl-reset-profiles" data-l10n-id="pref-reset-profiles" />
+    </hbox>
+  </vbox>
+
+  <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-ui"></html:h3></label>
+
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-showInPopup" />
+      <html:label
+        for="sl-showInPopup"
+        data-l10n-id="pref-show-in-popup"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-shortcutEnabled" />
+      <html:label
+        for="sl-shortcutEnabled"
+        data-l10n-id="pref-shortcut"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-debug" />
+      <html:label for="sl-debug" data-l10n-id="pref-debug"></html:label>
+    </html:div>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-requestTimeoutMs"
+        data-l10n-id="pref-timeout"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-requestTimeoutMs"
+        min="1000"
+        step="1000"
+        style="width: 100px"
+      />
+    </hbox>
+  </vbox>
+</groupbox>
+
+<vbox>
+  <html:label
+    data-l10n-id="pref-help"
+    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
+  ></html:label>
+</vbox>

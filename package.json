@@ -1,0 +1,56 @@
+{
+  "name": "sense-lingo",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Context-aware AI word & sentence translation for Zotero",
+  "config": {
+    "addonName": "Sense Lingo",
+    "addonID": "sense-lingo@linqingxiao.github.io",
+    "addonRef": "sense-lingo",
+    "addonInstance": "SenseLingo",
+    "prefsPrefix": "extensions.zotero.sense-lingo"
+  },
+  "homepage": "https://github.com/linqingxiao/sense-lingo-zotero#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linqingxiao/sense-lingo-zotero.git"
+  },
+  "author": "linqingxiao",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint:check": "prettier --check . && eslint .",
+    "lint:fix": "prettier --write . && eslint . --fix",
+    "release": "zotero-plugin release",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:zotero": "zotero-plugin test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@zotero-plugin/eslint-config": "^0.6.10",
+    "eslint": "^10.15.0",
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.1",
+    "zotero-plugin-scaffold": "^0.9.4",
+    "zotero-types": "^4.1.3"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "tabWidth": 2,
+    "endOfLine": "lf",
+    "overrides": [
+      {
+        "files": [
+          "*.xhtml"
+        ],
+        "options": {
+          "htmlWhitespaceSensitivity": "css"
+        }
+      }
+    ]
+  }
+}
