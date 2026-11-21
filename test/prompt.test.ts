@@ -166,3 +166,33 @@ describe("renderPromptFor", () => {
     expect(rendered.profileName).toBe("划词 · 只要中文意思");
   });
 });
+
+describe("default word profile", () => {
+  const base = {
+    profiles: parseProfiles(""),
+    text: "mitigate",
+    context,
+    targetLang: "zh-CN",
+    sourceLang: "auto",
+  };
+
+  it("requests meaning, US IPA and UK IPA on separate lines", () => {
+    const system = DEFAULT_PROFILES[WORD_PROFILE_ID].system;
+    expect(system).toContain("美式音标：");
+    expect(system).toContain("英式音标：");
+    expect(system).toContain("each on its own line");
+    expect(system).not.toMatch(/no pronunciation/i);
+  });
+
+  it("renders the request into the word system prompt", () => {
+    const rendered = renderPromptFor({ ...base, kind: "word" });
+    expect(rendered.system).toContain("美式音标：");
+    expect(rendered.system).toContain("英式音标：");
+    expect(rendered.system).toContain("zh-CN");
+    expect(rendered.system).not.toContain("{targetLang}");
+  });
+
+  it("keeps phonetics out of the sentence profile", () => {
+    expect(DEFAULT_PROFILES[SENTENCE_PROFILE_ID].system).not.toContain("音标");
+  });
+});

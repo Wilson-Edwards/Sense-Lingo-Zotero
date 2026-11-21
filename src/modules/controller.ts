@@ -101,6 +101,41 @@ export function copyToClipboard(text: string): boolean {
 }
 
 /**
+ * Result of an inline (selection-popup) translation. The popup path shows only
+ * the translation, so all UI state beyond that is reduced to an error message.
+ */
+export type InlineTranslation =
+  { ok: true; translation: string } | { ok: false; message: string };
+
+/**
+ * Translate `text` for the reader selection popup, where nothing but the plain
+ * translation is displayed. User-facing error text is produced here, so the
+ * popup code stays free of error mapping.
+ */
+export async function translateInline(
+  target: ReaderTarget,
+  text: string,
+): Promise<InlineTranslation> {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) {
+    return { ok: false, message: getString("error-no-selection") };
+  }
+  try {
+    const result = await translate({
+      text: trimmed,
+      attachmentItemID: target.attachmentItemID,
+      itemTitle: target.itemTitle,
+      getLocalTexts: () => readerTexts(target),
+      fingerprint: target.anchor?.fingerprint,
+    });
+    return { ok: true, translation: result.translation };
+  } catch (err) {
+    logError("translate failed", err);
+    return { ok: false, message: messageForError(err) };
+  }
+}
+
+/**
  * Translate `text` and render the result in the panel.
  *
  * `kindOverride` is what the panel's "switch to word / sentence" button passes;

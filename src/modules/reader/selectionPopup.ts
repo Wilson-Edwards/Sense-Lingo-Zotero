@@ -1,18 +1,26 @@
 /**
- * Inject a "Translate" button into the reader's native text-selection popup.
+ * Render translations inside the reader's native text-selection popup.
  *
  * `Zotero.Reader.registerEventListener("renderTextSelectionPopup", ...)` is the
- * public Zotero 7 API for this; the `append` callback places our element inside
+ * public Zotero 7 API for this; the `append` callback places our elements inside
  * the popup without touching Zotero's own markup.
+ *
+ * The popup shows the translation only — no floating result panel. The shortcut
+ * (`shortcuts.ts`) still uses the richer panel because it has no popup to host
+ * the output.
  */
 
 import { config } from "../../../package.json";
 import { getString } from "../../utils/locale";
 import { warn } from "../../utils/logger";
 import { getBooleanPref } from "../../utils/prefs";
-import { translateAndShow } from "../controller";
+import {
+  translateInline,
+  type InlineTranslation,
+  type ReaderTarget,
+} from "../controller";
 import { hasUsableProvider } from "../translate";
-import { shouldStartAutoTranslate } from "./autoTranslate";
+import { peekPopupTranslation, translateInPopup } from "./popupTranslation";
 import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
@@ -31,6 +39,26 @@ const BUTTON_STYLE = [
   "color:#222",
   "font-size:12px",
   "cursor:pointer",
+].join(";");
+
+/**
+ * The native popup caps itself at 198px, which is too narrow for a sentence
+ * translation. `width:max-content` keeps short words compact while `max-width`
+ * wraps longer output instead of overflowing the page.
+ */
+const RESULT_STYLE = [
+  "display:none",
+  "box-sizing:border-box",
+  "width:max-content",
+  "max-width:320px",
+  "max-height:40vh",
+  "overflow:auto",
+  "white-space:pre-wrap",
+  "word-break:break-word",
+  "user-select:text",
+  "font-size:12px",
+  "line-height:1.5",
+  "color:#1a1a1a",
 ].join(";");
 
 interface SelectionPopupEvent {
@@ -93,6 +121,27 @@ function captureAnchor(
   return liveAnchor;
 }
 
+function createResultSlot(doc: Document): HTMLDivElement {
+  const slot = doc.createElement("div");
+  slot.style.cssText = RESULT_STYLE;
+  return slot;
+}
+
+function showLoading(slot: HTMLDivElement): void {
+  slot.style.display = "block";
+  slot.style.color = "#666";
+  slot.textContent = getString("panel-loading");
+}
+
+function showInlineResult(
+  slot: HTMLDivElement,
+  result: InlineTranslation,
+): void {
+  slot.style.display = "block";
+  slot.style.color = result.ok ? "#1a1a1a" : "#b42318";
+  slot.textContent = result.ok ? result.translation : result.message;
+}
+
 function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   const doc = event.doc;
   const text = event.params?.annotation?.text ?? "";
@@ -104,43 +153,121 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   const itemID = event.reader?.itemID;
   attachShortcutToDoc(doc, itemID);
 
-  // Auto translation is independent of the popup button: the button may stay
-  // visible for a manual retry while every new selection already translates.
-  // Silence when the provider is unconfigured so we never spam error panels.
-  if (
-    getBooleanPref("autoTranslate", false) &&
-    hasUsableProvider() &&
-    shouldStartAutoTranslate(doc, text)
-  ) {
-    void translateAndShow(
-      { doc, attachmentItemID: itemID, reader: event.reader, anchor },
-      text,
-    );
+  const slot = createResultSlot(doc);
+
+  // The popup is a flex column capped at 198px; lift the cap so a translation
+  // can use a readable width. Clamp it to the space left of the viewport edge
+  // so a selection near the right margin does not push the text off-screen.
+  const popup = doc.querySelector(".selection-popup") as HTMLElement | null;
+  if (popup) {
+    popup.style.maxWidth = "none";
+    try {
+      const viewportWidth = doc.documentElement.clientWidth;
+      const available = viewportWidth - popup.getBoundingClientRect().left - 32;
+      slot.style.maxWidth = `${Math.max(184, Math.min(320, available))}px`;
+    } catch {
+      // Keep the CSS default when layout is not measurable yet.
+    }
   }
 
-  if (!getBooleanPref("showInPopup", true)) {
-    return;
+  const target: ReaderTarget = {
+    doc,
+    attachmentItemID: itemID,
+    reader: event.reader,
+    anchor,
+  };
+  // The same word in another sentence needs a different contextual translation,
+  // so the surrounding fingerprint is part of the cache key.
+  const cacheKey = [
+    text,
+    anchor.fingerprint?.before ?? "",
+    anchor.fingerprint?.after ?? "",
+  ].join("\u0000");
+
+  let button: HTMLButtonElement | null = null;
+  let running = false;
+
+  const apply = (promise: Promise<InlineTranslation>): void => {
+    if (running) {
+      return;
+    }
+    running = true;
+    showLoading(slot);
+    void promise
+      .then((result) => {
+        // Closing the popup while the request is in flight leaves nowhere to
+        // render; dropping the result is the intended inline-only behaviour.
+        if (!slot.isConnected) {
+          return;
+        }
+        showInlineResult(slot, result);
+        // A shown translation replaces the button; a failure brings it back.
+        if (button) {
+          button.style.display = result.ok ? "none" : "";
+        }
+        if (!result.ok) {
+          running = false;
+        }
+      })
+      .catch(() => {
+        if (!slot.isConnected) {
+          return;
+        }
+        slot.style.display = "block";
+        slot.style.color = "#b42318";
+        slot.textContent = getString("error-generic");
+        running = false;
+        if (button) {
+          button.style.display = "";
+        }
+      });
+  };
+
+  const run = (): void => {
+    apply(translateInPopup(doc, cacheKey, () => translateInline(target, text)));
+  };
+
+  const autoTranslate = getBooleanPref("autoTranslate", false);
+  if (!autoTranslate && getBooleanPref("showInPopup", true)) {
+    button = doc.createElement("button");
+    button.type = "button";
+    button.textContent = getString("popup-translate");
+    button.title = getString("popup-translate-title");
+    button.style.cssText = BUTTON_STYLE;
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Only the translation should remain once the request starts.
+      button!.style.display = "none";
+      run();
+    });
   }
 
-  const button = doc.createElement("button");
-  button.type = "button";
-  button.textContent = getString("popup-translate");
-  button.title = getString("popup-translate-title");
-  button.style.cssText = BUTTON_STYLE;
-  button.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    void translateAndShow(
-      { doc, attachmentItemID: itemID, reader: event.reader, anchor },
-      text,
-    );
-  });
+  const cached = peekPopupTranslation(doc, cacheKey);
+  if (cached) {
+    // The popup re-rendered for the same selection: keep showing the result
+    // (or attach to the request that is already in flight) instead of asking
+    // again or dropping the text.
+    apply(cached);
+  } else if (autoTranslate && hasUsableProvider()) {
+    // With auto translation on, a button would only be a redundant second
+    // click. Stay silent while unconfigured instead of spamming errors.
+    run();
+  }
+
+  const nodes: Node[] = [];
+  if (button) {
+    nodes.push(button);
+  }
+  nodes.push(slot);
 
   if (typeof event.append === "function") {
-    event.append(button);
+    event.append(...nodes);
   } else {
     // Fallback for builds without the `append` helper.
-    doc.body?.appendChild(button);
+    for (const node of nodes) {
+      doc.body?.appendChild(node);
+    }
   }
 }
 

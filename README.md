@@ -46,18 +46,19 @@
 
 ### v0.1（MVP，计划中）
 
-| 能力               | 说明                                                                                                            |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- |
-| 🔤 划词 / 划句翻译 | 在 Zotero 阅读器（PDF / EPUB）中选中文本，弹出译文                                                              |
-| 🎯 双提示词路由    | **划一个词**和**划一整句**使用两套独立提示词：前者给"语境词义 + 词性"，后者给"通顺译文"。两套互不干扰，分别配置 |
-| 🧩 语境增强        | `word` 模式自动带出所在句用于消歧；`sentence` 模式可选带出前后句用于衔接                                        |
-| 🤖 多服务商        | 原生支持 **OpenAI** 与 **DeepSeek**，并通过"OpenAI 兼容"模式覆盖任意自建/第三方网关                             |
-| ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；词、句模板各存一份，可多套切换         |
-| 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                          |
-| ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                          |
-| 🪄 自动翻译        | 选中文本立即自动出译文，无需点击按钮；默认关闭，避免误触发与额外费用                                            |
-| 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                 |
-| 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                              |
+| 能力               | 说明                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| 🔤 划词 / 划句翻译 | 在 Zotero 阅读器（PDF / EPUB）中选中文本，译文直接显示在原生划词弹窗内（只有译文）                               |
+| 🗣 美英音标         | 划词结果固定三行：**释义** / **美式音标** / **英式音标**，模型粘连时展示前也会自动拆行；短语、缩写、公式只给释义 |
+| 🎯 双提示词路由    | **划一个词**和**划一整句**使用两套独立提示词：前者给"语境词义 + 词性"，后者给"通顺译文"。两套互不干扰，分别配置  |
+| 🧩 语境增强        | `word` 模式自动带出所在句用于消歧；`sentence` 模式可选带出前后句用于衔接                                         |
+| 🤖 多服务商        | 原生支持 **OpenAI** 与 **DeepSeek**，并通过"OpenAI 兼容"模式覆盖任意自建/第三方网关                              |
+| ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；词、句模板各存一份，可多套切换          |
+| 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                           |
+| ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                           |
+| 🪄 自动翻译        | 选中文本立即在弹窗内出译文，无需点击按钮；开启后自动隐藏翻译按钮；默认关闭，避免误触发与额外费用                 |
+| 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                  |
+| 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                               |
 
 ### 后续版本
 
@@ -116,13 +117,13 @@
 ⑦ LLM Client（OpenAI 兼容）→ POST {baseURL}/chat/completions
         │  ⑧ 译文
         ▼
-⑨ 结果面板 / 回填注释（显示判定类型，支持一键切换 kind 重译）
+⑨ 划词弹窗内联译文（只显示译文）/ 快捷键结果面板（类型、重译、复制）
 ```
 
 ### 关键步骤说明
 
 **① 捕获划词**
-监听 Zotero 阅读器 `renderTextSelectionPopup`，在原生弹窗中注入"翻译"按钮；同时注册快捷键，直接对当前 selection 触发翻译。开启 `autoTranslate` 后，弹窗一出现就自动发起翻译，不再需要点击按钮（同一选区在 2 秒内的重复渲染会被去重）。
+监听 Zotero 阅读器 `renderTextSelectionPopup`，在原生弹窗中注入"翻译"按钮；同时注册快捷键，直接对当前 selection 触发翻译。译文**直接渲染回划词弹窗**（只有译文，不再弹出右下角面板）。开启 `autoTranslate` 后，弹窗一出现就自动发起翻译，按钮也会隐藏；同一选区的多次弹窗渲染共享一次请求。
 
 **② 取选中文本**
 `event.params.annotation.text` 与 `reader._internalReader._lastSelectText` 二选一：优先取 annotation 文本，回退到 selection 缓存；两者都为空时提示用户重新划词。
@@ -159,7 +160,7 @@
 6. **指纹消歧**：同一个词在全书出现多次（或同段出现两次）时，把每个候选位置左右各 30 字符与选区指纹（划词时抓取的左右各 40 字符）比对，取**相似度最高**的位置，而不是简单取第一处——这是"句子对不上"的根因修复；
 7. 句子长度超过 `maxSentenceChars`（默认 400）时向下截断并在日志中标注，避免把整页当上下文。
 
-**兜底策略（按优先级）**：定位到唯一句子 → 定位到多个候选时取离选中文本最近的 1 条 → 分句失败时回退为"前后各 N 字符的窗口" → 仍失败则不注入上下文：`word` 模式下 `{sentence}` 为空串，模型自动降级为纯词义翻译；`sentence` 模式不受影响（它本来就不依赖上下文句子）。两种情况下结果面板都会提示"未取到上下文"。
+**兜底策略（按优先级）**：定位到唯一句子 → 定位到多个候选时取离选中文本最近的 1 条 → 分句失败时回退为"前后各 N 字符的窗口" → 仍失败则不注入上下文：`word` 模式下 `{sentence}` 为空串，模型自动降级为纯词义翻译；`sentence` 模式不受影响（它本来就不依赖上下文句子）。两种情况下快捷键结果面板都会提示"未取到上下文"。
 
 **⑤～⑨ 模板路由、调用与展示**
 路由是这一步的核心，只有一行判断，但决定了整条链路的输出风格：
@@ -208,20 +209,20 @@ npm run build
 
 1. 打开任意 PDF / EPUB 附件；
 2. 选中文本——**选一个词**或**选一整句**都可以，插件自动判定类型；
-3. 点击弹窗中的 **翻译** 按钮（或按快捷键 `Ctrl/⌘ + Shift + T`）；也可以在设置里打开 **自动翻译**，选中文本后无需任何点击，译文面板会直接出现；
-4. 结果面板显示：**译文**、**本次判定类型**（词 / 句）、**使用的模板名**、命中的原句、模型与耗时；
-5. 判定不符合预期时，面板顶部可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；
-6. 面板内还可展开提示词临时改一版再试，满意后存为新模板。
+3. 开启设置里的 **自动翻译** 后，选中文本即直接在划词弹窗内显示译文，无需任何点击；未开启时，点击弹窗中的 **翻译** 按钮同样在弹窗内显示译文；
+4. 弹窗里**只显示译文本身**，不占用右下角；划一个单词时会依次显示三行：**释义**、**美式音标**、**英式音标**（短语 / 缩写只有释义）；
+5. 需要更多信息时按快捷键 `Ctrl/⌘ + Shift + T`，会打开完整结果面板：**判定类型**（词 / 句）、**使用的模板名**、命中的原句、模型与耗时；
+6. 在结果面板中，判定不符合预期时可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；还可展开提示词临时改一版再试，满意后存为新模板。
 
 ### 同一句话，两种划法
 
 以 `The results suggest that the proposed method can mitigate the inherent noise.` 为例：
 
-| 划选内容                            | 判定       | 走的模板                             | 期望输出                                           |
-| ----------------------------------- | ---------- | ------------------------------------ | -------------------------------------------------- |
-| `mitigate`                          | `word`     | `promptProfileWord` → `word`         | `减轻（v.）；在此句中指降低…的程度`                |
-| `inherent`                          | `word`     | `promptProfileWord` → `word`         | `固有的（adj.）；句中修饰 noise，指数据自带的噪声` |
-| `The results suggest that … noise.` | `sentence` | `promptProfileSentence` → `sentence` | `结果表明，所提方法能够减轻固有噪声。`             |
+| 划选内容                            | 判定       | 走的模板                             | 期望输出                                                                                                  |
+| ----------------------------------- | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `mitigate`                          | `word`     | `promptProfileWord` → `word`         | `减轻（v.）；在此句中指降低…的程度`<br>`美式音标：/ˈmɪtɪɡeɪt/`<br>`英式音标：/ˈmɪtɪɡeɪt/`                 |
+| `inherent`                          | `word`     | `promptProfileWord` → `word`         | `固有的（adj.）；句中修饰 noise，指数据自带的噪声`<br>`美式音标：/ɪnˈhɛrənt/`<br>`英式音标：/ɪnˈhɪərənt/` |
+| `The results suggest that … noise.` | `sentence` | `promptProfileSentence` → `sentence` | `结果表明，所提方法能够减轻固有噪声。`                                                                    |
 
 关键差别：**划词时模型必须解释"在这个句子里它是什么意思"，划句时模型只需给出通顺译文、不要解释。**
 
@@ -233,30 +234,30 @@ npm run build
 
 > 下表 `键` 为简化名，实际完整键名为 `extensions.zotero.sense-lingo.<键>`，默认值写在 `addon/prefs.js` 中。
 
-| 键                         | 类型         | 默认值        | 说明                                                                                                        |
-| -------------------------- | ------------ | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `provider`                 | string       | `openai`      | 服务商预设：`openai` / `deepseek` / `custom`                                                                |
-| `apiKey`                   | string       | `""`          | API Key。保存在 Zotero prefs 中（**明文**，见[隐私与安全](#隐私与安全)）                                    |
-| `baseURL`                  | string       | 跟随 provider | 接口地址，可在 `custom` 下自由填写，自动补 `/v1` 时需注意末尾斜杠                                           |
-| `model`                    | string       | 跟随 provider | 模型名，如 `gpt-4o-mini` / `deepseek-chat`                                                                  |
-| `temperature`              | string       | `"0.3"`       | 越低越稳定，翻译建议 0～0.5。**按字符串存储**，因为 Firefox pref 只支持 int/bool/string，float 会被静默截断 |
-| `maxTokens`                | number       | `1024`        | 单次回复上限                                                                                                |
-| `targetLang`               | string       | `zh-CN`       | 目标语言；设为 `auto` 时按 Zotero 界面语言推断                                                              |
-| `sourceLang`               | string       | `auto`        | 源语言；默认由模型自行判断                                                                                  |
-| `selectionKindMode`        | string       | `auto`        | 选区类型判定：`auto` 自动判定 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                           |
-| `wordMaxWords`             | number       | `3`           | 判定为"词"的最大词数，超出则按句处理                                                                        |
-| `wordMaxChars`             | number       | `40`          | 判定为"词"的最大字符数，超出则按句处理                                                                      |
-| `useContext`               | boolean      | `true`        | **仅 `word` 模式**：是否带出所在句（关闭后等同词典式直译）                                                  |
-| `sentenceContextNeighbors` | boolean      | `false`       | **仅 `sentence` 模式**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                            |
-| `maxSentenceChars`         | number       | `400`         | 单句上下文长度上限，超出则截断                                                                              |
-| `promptProfileWord`        | string       | `word`        | **划词**时使用的提示词模板 id                                                                               |
-| `promptProfileSentence`    | string       | `sentence`    | **划句**时使用的提示词模板 id                                                                               |
-| `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合，词模板与句模板分别存放                                                                      |
-| `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                  |
-| `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，无需点击按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过                      |
-| `shortcutEnabled`          | boolean      | `true`        | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                         |
-| `requestTimeoutMs`         | number       | `30000`       | 请求超时；超时后提示重试而非静默失败                                                                        |
-| `debug`                    | boolean      | `false`       | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                     |
+| 键                         | 类型         | 默认值        | 说明                                                                                                                       |
+| -------------------------- | ------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `provider`                 | string       | `openai`      | 服务商预设：`openai` / `deepseek` / `custom`                                                                               |
+| `apiKey`                   | string       | `""`          | API Key。保存在 Zotero prefs 中（**明文**，见[隐私与安全](#隐私与安全)）                                                   |
+| `baseURL`                  | string       | 跟随 provider | 接口地址，可在 `custom` 下自由填写，自动补 `/v1` 时需注意末尾斜杠                                                          |
+| `model`                    | string       | 跟随 provider | 模型名，如 `gpt-4o-mini` / `deepseek-chat`                                                                                 |
+| `temperature`              | string       | `"0.3"`       | 越低越稳定，翻译建议 0～0.5。**按字符串存储**，因为 Firefox pref 只支持 int/bool/string，float 会被静默截断                |
+| `maxTokens`                | number       | `1024`        | 单次回复上限                                                                                                               |
+| `targetLang`               | string       | `zh-CN`       | 目标语言；设为 `auto` 时按 Zotero 界面语言推断                                                                             |
+| `sourceLang`               | string       | `auto`        | 源语言；默认由模型自行判断                                                                                                 |
+| `selectionKindMode`        | string       | `auto`        | 选区类型判定：`auto` 自动判定 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                                          |
+| `wordMaxWords`             | number       | `3`           | 判定为"词"的最大词数，超出则按句处理                                                                                       |
+| `wordMaxChars`             | number       | `40`          | 判定为"词"的最大字符数，超出则按句处理                                                                                     |
+| `useContext`               | boolean      | `true`        | **仅 `word` 模式**：是否带出所在句（关闭后等同词典式直译）                                                                 |
+| `sentenceContextNeighbors` | boolean      | `false`       | **仅 `sentence` 模式**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                           |
+| `maxSentenceChars`         | number       | `400`         | 单句上下文长度上限，超出则截断                                                                                             |
+| `promptProfileWord`        | string       | `word`        | **划词**时使用的提示词模板 id                                                                                              |
+| `promptProfileSentence`    | string       | `sentence`    | **划句**时使用的提示词模板 id                                                                                              |
+| `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合，词模板与句模板分别存放                                                                                     |
+| `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                                 |
+| `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，译文直接出现在划词弹窗内；开启后自动隐藏翻译按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过 |
+| `shortcutEnabled`          | boolean      | `true`        | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                                        |
+| `requestTimeoutMs`         | number       | `30000`       | 请求超时；超时后提示重试而非静默失败                                                                                       |
+| `debug`                    | boolean      | `false`       | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                                    |
 
 服务商预设对照：
 
@@ -290,7 +291,7 @@ npm run build
   "word": {
     "name": "划词 · 语境辨析",
     "kind": "word",
-    "system": "You are a precise bilingual lexicographer. Translate the selected text into {targetLang}, using the given sentence to disambiguate word sense.",
+    "system": "You are a precise bilingual lexicographer. Translate the selected text into {targetLang}, using the given sentence to disambiguate word sense. First line: contextual meaning (part of speech). For a single English word, add 美式音标：/.../ and 英式音标：/.../, each on its own line. Output plain text only.",
     "user": "Sentence: {sentence}\nSelected text: {text}"
   },
   "word-casual": {
@@ -346,11 +347,20 @@ appears in — use it ONLY to disambiguate word sense, part of speech and
 collocation. Do not translate or paraphrase the sentence itself.
 
 Rules:
-1. Output format: "语境词义（词性）", e.g. "减轻（v.）".
-2. If the selection is a fixed term or acronym, give the accepted translation
-   first, then a gloss of its meaning in this paper (<= 20 chars).
-3. Keep formulas, citation markers and proper nouns intact.
-4. No pinyin, no pronunciation, no extra commentary.
+1. First line: the contextual meaning in {targetLang}, followed by the part of
+   speech in parentheses, e.g. "减轻（v.）". If the selection is a fixed term or
+   acronym, give the accepted translation first, then a gloss of its meaning in
+   this paper (<= 20 chars).
+2. If the selection is a single English word, output exactly two more lines
+   after the meaning line, each on its own line:
+   美式音标：/<General American IPA>/
+   英式音标：/<British RP IPA>/
+   Use broad IPA only (no pinyin, no respelling). If both pronunciations are
+   identical, still output both lines with the same transcription.
+3. If the selection is a multi-word term, an acronym, a formula, or not a single
+   English word, output the meaning line only - no phonetic lines.
+4. Keep formulas, citation markers and proper nouns intact.
+5. Output plain text only: no Markdown, no bullet points, no extra commentary.
 
 [user]
 Sentence: {sentence}
@@ -470,8 +480,8 @@ npm run lint:check  # prettier --check + eslint
 │   │   ├── translate.ts            # 主管线：类型 → 上下文 → 提示词 → LLM
 │   │   ├── controller.ts           # UI 与管线之间：状态机 + 错误文案
 │   │   ├── reader/
-│   │   │   ├── selectionPopup.ts   # 划词弹窗按钮注入 + 自动翻译触发
-│   │   │   ├── autoTranslate.ts    # 自动翻译去重守卫（纯函数）
+│   │   │   ├── selectionPopup.ts   # 划词弹窗：按钮 + 内联译文
+│   │   │   ├── popupTranslation.ts # 弹窗译文请求共享 / 短缓存（纯逻辑）
 │   │   │   ├── selectionKind.ts    # word / sentence 判定（纯函数）
 │   │   │   ├── sentence.ts         # 句子定位 + 前后句（纯函数）
 │   │   │   ├── textSource.ts       # Zotero.Fulltext 取全文 + 缓存
@@ -481,6 +491,7 @@ npm run lint:check  # prettier --check + eslint
 │   │   │   ├── client.ts           # OpenAI 兼容客户端（超时/错误码归一）
 │   │   │   ├── providers.ts        # openai / deepseek / custom 预设
 │   │   │   ├── prompt.ts           # 模板集合、默认模板、路由与回退
+│   │   │   ├── format.ts           # 划词三行格式归一（释义 / 美式 / 英式）
 │   │   │   └── render.ts           # 变量渲染
 │   │   └── ui/
 │   │       ├── resultPanel.ts      # 阅读器内的译文面板
@@ -510,13 +521,13 @@ npm run lint:check  # prettier --check + eslint
 
 - [x] 插件骨架（template + scaffold + 打包）
 - [x] 设置页：provider / apiKey / model / targetLang
-- [x] 划词弹窗注入按钮 + 快捷键
+- [x] 划词弹窗内联译文（只显示译文，不弹右下角面板）+ 快捷键
 - [x] 选区类型判定（word / sentence）+ 阈值可配 + 单测
 - [x] 双提示词槽位 `promptProfileWord` / `promptProfileSentence` + 内置 `word` / `sentence` 模板
 - [x] 句子定位算法（含前后句扩展）+ 单测
 - [x] OpenAI / DeepSeek 客户端 + 错误处理
 - [x] 提示词模板渲染（路由 + 变量）+ 单测
-- [x] 结果面板（显示判定类型，支持一键切换重译、临时改提示词、复制）
+- [x] 快捷键结果面板（显示判定类型，支持一键切换重译、临时改提示词、复制）
 
 > v0.1 未包含 CI workflow（`.github/workflows`），如需自动打包与 Release 请补上。
 
@@ -541,7 +552,7 @@ npm run lint:check  # prettier --check + eslint
 
 ## 已知限制
 
-1. **扫描版 / 图片型 PDF 没有上下文**。没有文本层时取不到所在句，面板会提示"未取到上下文"并降级为纯词义翻译；先做 OCR 即可恢复。
+1. **扫描版 / 图片型 PDF 没有上下文**。没有文本层时取不到所在句，快捷键结果面板会提示"未取到上下文"并降级为纯词义翻译；先做 OCR 即可恢复。
 2. **句子定位依赖文本层质量**。双栏排版、页眉页脚、脚注混排可能导致句子边界识别偏移，此时会退化为字符窗口。
 3. **公式与表格**：PDF 文本层里的公式往往乱序，译文可能失真；建议只选普通正文。
 4. **Token 成本**：`word` 模式每次带一句上下文，比纯词翻译贵但远低于整段翻译；`sentence` 模式开启 `sentenceContextNeighbors` 后上下文最多翻三倍，注意成本。
@@ -552,6 +563,8 @@ npm run lint:check  # prettier --check + eslint
 9. **暂不支持把译文写回注释 / 笔记**（v0.2），面板目前只提供复制。
 10. **EPUB 的上下文来源分四级**：附件全文缓存 → 选区锚点块 → 阅读器文档（含嵌套 iframe）→ Zotero 的 EPUB 解析器。最后一级要读整本书，**首次触发会慢 1～3 秒**（之后按附件缓存）。若四级都取不到才会提示"未取到上下文"。
 11. **没有选区指纹时可能取到重复词的错误位置**。指纹在主窗口里通过快捷键触发时拿不到（阅读器内触发没问题），此时若同一个词在文本里出现多次，只能回退到"第一个合理位置"。
+12. **划词译文是内联的**：请求返回前如果弹窗被关闭，译文不会再出现在别处；需要完整信息（判定类型、模板、耗时、重译）请用快捷键打开结果面板。
+13. **音标由大模型生成**：常见词基本可靠，罕见词、专有名词、屈折形式或短语可能不准；关键发音请以词典为准。短语 / 缩写默认不输出音标，避免模型硬编。
 
 ## 待确认事项
 

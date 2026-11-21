@@ -22,6 +22,7 @@ import {
   getItemTitle,
 } from "./reader/textSource";
 import { chatCompletion } from "./llm/client";
+import { normalizeWordTranslation } from "./llm/format";
 import { parseProfiles, type PromptProfiles } from "./llm/prompt";
 import { renderPromptFor } from "./llm/render";
 import {
@@ -258,7 +259,10 @@ export async function translate(
   });
 
   return {
-    translation: response.content,
+    translation:
+      kind === "word"
+        ? normalizeWordTranslation(response.content)
+        : response.content,
     kind,
     profileId: rendered.profileId,
     profileName: rendered.profileName,
