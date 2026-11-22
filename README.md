@@ -1,586 +1,384 @@
-# Sense Lingo for Zotero
+# Sense Lingo
 
-> 在 Zotero 7 里划词，用大模型（LLM）翻译。划**一个词**时结合所在句辨析词义，划**一整句**时给出通顺译文——**两套提示词各管一件事，互不干扰**。
+**English** · [简体中文](README.zh-CN.md)
+
+> **Context-aware AI word & sentence translation for Zotero 7.** Select a word and Sense Lingo
+> explains it _in the sentence where it appears_, with US/UK IPA; select a sentence and it returns a
+> clean translation. **Two prompts, two jobs, zero interference.**
 
 <p>
   <img alt="Zotero 7" src="https://img.shields.io/badge/Zotero-7-CC2936?style=flat-square&logo=zotero" />
-  <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
-  <img alt="Status" src="https://img.shields.io/badge/status-v0.1.0-blue?style=flat-square" />
+  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" />
+  <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
+  <img alt="Tests 134 passing" src="https://img.shields.io/badge/tests-134%20passing-brightgreen?style=flat-square" />
 </p>
 
----
+<!-- Before publishing, add a demo GIF: docs/images/demo.gif
+<img src="docs/images/demo.gif" width="720" alt="Selection translation demo" /> -->
 
-## 目录
+[Quick start](#quick-start) · [Usage](#usage) · [Configuration](docs/configuration.md) ·
+[Prompts](docs/prompts.md) · [How it works](docs/how-it-works.md) ·
+[Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md)
 
-- [项目背景](#项目背景)
-- [核心特性](#核心特性)
-- [与 zotero-pdf-translate 的关系](#与-zotero-pdf-translate-的关系)
-- [工作原理](#工作原理)
-- [安装](#安装)
-- [使用](#使用)
-- [配置项](#配置项)
-- [提示词自定义](#提示词自定义)
-- [开发](#开发)
-- [项目结构](#项目结构)
-- [隐私与安全](#隐私与安全)
-- [路线图](#路线图)
-- [已知限制](#已知限制)
-- [待确认事项](#待确认事项)
-- [致谢与许可](#致谢与许可)
+> Detailed reference docs are currently written in Chinese. The full Chinese README lives
+> [here](README.zh-CN.md); translation PRs are welcome.
 
----
+## Why another translate plugin?
 
-## 项目背景
+Reading English papers, **translating a single word is often not enough**:
 
-做这个插件的原因很朴素：读英文文献时，只翻译一个单词往往仍然读不懂。
+| Common approach                     | Problem                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Translate only the selected word    | The sentence is lost. `address` means “deal with” in `address the issue`, but “location” in `email address`. |
+| Translate the whole paragraph       | Too heavy when all you want is what _this_ word means _here_.                                                |
+| Generic selection-translation tools | Treat the selection as the whole input, so the result is often “correct but off-key”.                        |
 
-- **孤立的词**丢失了语境。`address` 在 `address the issue` 里是"处理"，在 `email address` 里是"地址"。
-- **整段翻译**又太重。我只想知道这一个词/短语在这句话里的意思和用法。
-- 通用划词翻译工具把选中的词当作全部输入，**丢掉了它所在的句子**，所以译文经常"对但不对味"。
+So the project does exactly one thing: **selection → find the sentence that contains it → send both
+to an LLM → get a contextual translation whose prompt you fully control.**
 
-所以本项目只做一件事：**划词 → 自动抓取该词所在的句子 → 连同句子一起交给大模型 → 得到有语境、可自定义提示词的译文。**
+One-line pitch: **the Zotero plugin that actually understands context.**
 
-一句话定位：**Zotero 里最懂语境的 AI 划词翻译插件。**
+## See it in action
 
-## 核心特性
+Take `The results suggest that the proposed method can mitigate the inherent noise.` and select it
+two different ways:
 
-### v0.1（MVP，计划中）
+| Selection                           | Kind     | Output                                                                                                  |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `mitigate`                          | word     | 减轻（v.）；在此句中指降低…的程度<br>`美式音标：/ˈmɪtɪɡeɪt/`<br>`英式音标：/ˈmɪtɪɡeɪt/`                 |
+| `inherent`                          | word     | 固有的（adj.）；句中修饰 noise，指数据自带的噪声<br>`美式音标：/ɪnˈhɛrənt/`<br>`英式音标：/ɪnˈhɪərənt/` |
+| `The results suggest that … noise.` | sentence | 结果表明，所提方法能够减轻固有噪声。                                                                    |
 
-| 能力               | 说明                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| 🔤 划词 / 划句翻译 | 在 Zotero 阅读器（PDF / EPUB）中选中文本，译文直接显示在原生划词弹窗内（只有译文）                                        |
-| 🗣 美英音标         | 划词结果固定三行：**释义** / **美式音标** / **英式音标**，模型粘连时展示前也会自动拆行；短语、缩写、公式只给释义          |
-| 🎯 双提示词路由    | **划一个词**和**划一整句**使用两套独立提示词：前者给"语境词义 + 词性"，后者给"通顺译文"。两套互不干扰，分别配置           |
-| 🧩 语境增强        | `word` 模式自动带出所在句用于消歧；`sentence` 模式可选带出前后句用于衔接                                                  |
-| 🤖 多服务商        | 原生支持 **OpenAI** 与 **DeepSeek**，并通过"OpenAI 兼容"模式覆盖任意自建/第三方网关                                       |
-| ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；设置页为词、句各提供一个多行文本框，换行原样保留 |
-| 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                                    |
-| ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                                    |
-| 🪄 自动翻译        | 选中文本立即在弹窗内出译文，无需点击按钮；开启后自动隐藏翻译按钮；默认关闭，避免误触发与额外费用                          |
-| 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                           |
-| 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                                        |
+The key difference: **for a word, the model explains what it means _in this sentence_; for a
+sentence, it only translates.** That is why the two cases get two separate prompts — one template
+cannot do both well.
 
-### 后续版本
+_Default target language is Simplified Chinese (`zh-CN`); see [configuration](docs/configuration.md)
+for changing it._
 
-- 流式输出（先看到字，再看到完整译文）
-- 一键把译文写入 Zotero 注释 / 笔记
-- 术语表（glossary）：指定领域的固定译法
-- 朗读发音、生词本导出
-- 全文/段落翻译、摘要翻译
-- 按选区类型分配不同模型（小模型翻词、大模型翻句）
+## Features
 
-## 与 zotero-pdf-translate 的关系
+| Capability                     | What it does                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 🔤 Word / sentence translation | Select text in the Zotero PDF / EPUB reader; the translation appears inside the native selection popup, translation only.           |
+| 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                     |
+| 🗣 US / UK IPA                  | Single words always return three lines: **meaning** / **US IPA** / **UK IPA**; phrases, acronyms and formulas get the meaning only. |
+| 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                          |
+| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).    |
+| ✍️ Fully editable prompts      | Two multiline boxes in settings, line breaks preserved; variables like `{text}`, `{sentence}`, `{targetLang}`.                      |
+| 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                   |
+| ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.     |
+| 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                     |
+| 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                   |
+| 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                             |
 
-[zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate) 是一个成熟、强大、功能极其全面的插件（20+ 翻译服务，支持 PDF / EPUB / 网页 / 元数据 / 注释 / 笔记翻译）。**本项目不是它的替代品，也不打算在功能广度上与之竞争**，而是刻意做窄：
+## Quick start
 
-| 维度     | zotero-pdf-translate    | Sense Lingo（本项目）                                            |
-| -------- | ----------------------- | ---------------------------------------------------------------- |
-| 定位     | 全场景翻译工具箱        | 单点做深：划词 + 语境                                            |
-| 输入单位 | 词 / 段 / 整篇 / 元数据 | 划选文本 **+ 所在句子**，且**按"词/句"分派不同提示词**           |
-| 服务商   | 20+，含传统翻译引擎     | 只做 LLM，主打 OpenAI / DeepSeek 兼容协议                        |
-| 提示词   | 可配置                  | **第一等公民**：词、句两套模板各占一个文本框，独立配置，全变量化 |
-| 代码体量 | 大型                    | 有意保持小而可读                                                 |
+### 1. Install the plugin
 
-我们复用的是它的**工程实践**而非代码：
+**From a release** (once published):
 
-- 项目基于 [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template) 搭建（TypeScript + `zotero-plugin-scaffold` + `ztoolkit`）；
-- 划词弹窗复用 Zotero 阅读器公开的 `renderTextSelectionPopup` 事件钩子；
-- 服务商抽象参考其 `services/*.ts` 的"声明式服务定义"写法。
+1. Download `sense-lingo.xpi` from [Releases](https://github.com/linqingxiao/sense-lingo-zotero/releases);
+2. In Zotero: `Tools` → `Plugins` → gear icon → `Install Plugin From File…`;
+3. Pick the xpi and restart Zotero.
 
-> ⚠️ 本项目为独立实现。若直接搬运 zotero-pdf-translate 的代码，需遵守其 AGPL-3.0 许可（本项目同样采用 AGPL-3.0）。
-
-## 工作原理
-
-```text
-① 划选文本（一个词 或 一整句）
-        │
-        ▼
-② 读取 selectionText
-        │
-        ▼
-③ Selection Kind Resolver —— 判定选区类型
-     词数 ≤ 3 · 无句末标点 · ≤ 40 字符 · 未跨行  →  word
-     其余条件                                    →  sentence
-        │  kind
-        ▼
-④ Context Resolver —— 按 kind 取不同上下文
-     word      →  {sentence} = 该词所在句（消歧依据）
-     sentence  →  {sentence} = 空串
-                  可选 {prevSentence} / {nextSentence}
-        │
-        ▼
-⑤ Prompt Router —— 按 kind 选模板 + 变量渲染
-     word      →  promptProfileWord      （默认模板 id: word）
-     sentence  →  promptProfileSentence  （默认模板 id: sentence）
-        │  ⑥ messages[]
-        ▼
-⑦ LLM Client（OpenAI 兼容）→ POST {baseURL}/chat/completions
-        │  ⑧ 译文
-        ▼
-⑨ 划词弹窗内联译文（只显示译文）/ 快捷键结果面板（类型、重译、复制）
-```
-
-### 关键步骤说明
-
-**① 捕获划词**
-监听 Zotero 阅读器 `renderTextSelectionPopup`，在原生弹窗中注入"翻译"按钮；同时注册快捷键，直接对当前 selection 触发翻译。译文**直接渲染回划词弹窗**（只有译文，不再弹出右下角面板）。开启 `autoTranslate` 后，弹窗一出现就自动发起翻译，按钮也会隐藏；同一选区的多次弹窗渲染共享一次请求。
-
-**② 取选中文本**
-`event.params.annotation.text` 与 `reader._internalReader._lastSelectText` 二选一：优先取 annotation 文本，回退到 selection 缓存；两者都为空时提示用户重新划词。
-
-**③ 判定选区类型（word / sentence）**
-这一步决定后面**用哪套提示词**，因此必须确定且可解释。判定为启发式，只看选中文本自身特征：
-
-1. 含句末标点 `. ! ? 。！？`（排除单个词末尾附带的标点，以及 `et al.` / `e.g.` / `Fig.` 等已知缩写）→ `sentence`
-2. 词数 ≥ `wordMaxWords`（默认 3）→ `sentence`
-3. 字符数 > `wordMaxChars`（默认 40）→ `sentence`
-4. PDF 行尾产生的短换行不单独作为判据；真正的跨行长句仍由词数、字符数或句末标点判为 `sentence`
-5. 以上都不满足 → `word`
-
-`selectionKindMode` 可设 `alwaysWord` / `alwaysSentence` 直接跳过判定（习惯固定模式的用户）。判定结果会随请求一起进入日志与面板，面板上始终显示"本次判定为：词 / 句"并支持一键切换重译——这比调阈值更快，也不污染全局设置。
-
-**④ 定位句子与上下文（本项目的核心难点）**
-两种类型取上下文的策略**不同**：
-
-- `word`：**必须**定位到该词所在的句子，填入 `{sentence}`。这是消歧的唯一依据，取不到就退化为词典式直译（`useContext = false` 时整步跳过，等同词典式查询）。
-- `sentence`：划选本身就是待译正文，`{sentence}` 置为空串，避免与 `{text}` 重复导致模型复读；若 `sentenceContextNeighbors = true`，再取前后各 1 句填入 `{prevSentence}` / `{nextSentence}`（默认关闭，因为会显著增加 token）。
-
-句子定位不依赖 PDF 坐标，而是走**文本层匹配**：
-
-1. **取文本：从"最精确"到"最宽泛"四级回退**（每级都缓存，任一级失败不影响翻译）
-   - ① **附件全文**：`Zotero.Items.get(attachmentID).attachmentText`，读 Zotero 的全文缓存（`.zotero-ft-cache`）；PDF 未建索引时会按需调用 `Zotero.PDFWorker.getFullText` 抽取。
-   - ② **选区锚点块**（最精确）：划词瞬间从 DOM `Range` 记录选区所在的**祖先块文本**（最内层块优先，深度 ≤ 8，跳过 `body`/`html`）。点击"翻译"按钮时选区可能已被清空，所以必须在弹出那一刻抓取。
-   - ③ **阅读器文档文本**：从选区所在文档出发，**递归遍历嵌套 iframe/frame（深度 ≤ 4）**，把每个文档的 `body.innerText` 当作候选，按长度降序尝试。这层是 EPUB 的关键——epub.js 把每一节渲染在嵌套 iframe 里，只读外层文档只会拿到工具栏文案。
-   - ④ **EPUB 全文**：仍未命中时，复用 Zotero 自己的 `chrome://zotero/content/EPUB.mjs` 逐节拼出整本书文本（上限 200 万字符，读完 `close()` 释放 ZipReader），与 Zotero 建索引的方式一致。
-   - 四级都不命中 → 没有上下文，按下面的兜底策略降级，并在面板提示"未取到上下文"。
-2. 以选中文本为 needle 在全文中做索引查找，命中位置记为 `[start, end)`；
-3. 从 `start` 向前、从 `end` 向后扫描，遇句末标点（`. ! ? 。！？` 及其后紧跟空白/换行）即止，得到候选句子（前后句用同样方式再各扩一句）；
-4. 处理已知坑：缩写（`et al.` `e.g.` `Fig.` `vs.`）、小数点、引用编号 `[12]`、换行断词（`trans-\nlation`）、软连字符与零宽字符（EPUB 常见）、不换行空格 `\u00A0`、页眉页脚混入；
-5. **空白不敏感二次匹配**：EPUB 的索引文本由各节 `innerText` 拼接，节点边界会插入多余空格（如 `pro posed`），精确查不到时去掉两侧所有空白再比对，并把命中位置映射回原文坐标；
-6. **指纹消歧**：同一个词在全书出现多次（或同段出现两次）时，把每个候选位置左右各 30 字符与选区指纹（划词时抓取的左右各 40 字符）比对，取**相似度最高**的位置，而不是简单取第一处——这是"句子对不上"的根因修复；
-7. 句子长度超过 `maxSentenceChars`（默认 400）时向下截断并在日志中标注，避免把整页当上下文。
-
-**兜底策略（按优先级）**：定位到唯一句子 → 定位到多个候选时取离选中文本最近的 1 条 → 分句失败时回退为"前后各 N 字符的窗口" → 仍失败则不注入上下文：`word` 模式下 `{sentence}` 为空串，模型自动降级为纯词义翻译；`sentence` 模式不受影响（它本来就不依赖上下文句子）。两种情况下快捷键结果面板都会提示"未取到上下文"。
-
-**⑤～⑨ 模板路由、调用与展示**
-路由是这一步的核心，只有一行判断，但决定了整条链路的输出风格：
-
-```
-profileId = (kind === "word") ? prefs.promptProfileWord
-                              : prefs.promptProfileSentence
-```
-
-- 两个槽位**完全独立**：改划词模板不会影响划句行为，反之亦然；
-- 某个键指向不存在的模板时，回退到内置的 `word` / `sentence` 默认模板，并写一条 `warn` 日志，绝不静默失败；
-- 设置页只为 `word` / `sentence` 两个槽位提供文本框，编辑的正是模板里的 `system` 字段。
-
-请求统一走 OpenAI 兼容协议：`POST {baseURL}/chat/completions`，`Authorization: Bearer {apiKey}`。DeepSeek 只是 `baseURL` 与 `model` 的预设差异（`https://api.deepseek.com/v1` + `deepseek-chat`），因此**一家客户端覆盖两家服务商**，第三方兼容网关同理。
-
-## 安装
-
-> 状态：v0.1.0 已可自构建安装，暂无正式 Release。想直接用请按下面的"本地构建"三步走。
-
-**本地构建**
+**From source** (recommended until a release exists):
 
 ```bash
 npm install
-npm run build
-# 产物：.scaffold/build/sense-lingo.xpi
+npm run build        # → .scaffold/build/sense-lingo.xpi
 ```
 
-然后在 Zotero 里 `工具 → 插件 → 齿轮 → Install Plugin From File…` 选择该 xpi。
+Install that xpi through the same menu. Requires **Zotero 7.0 – 11.x**; see
+`strict_min_version` / `strict_max_version` in `addon/manifest.json`.
 
-**正式安装（发布后）**
+> Won't install, or Zotero says it may be incompatible? Your Zotero is probably newer than
+> `strict_max_version` — see
+> [troubleshooting](docs/troubleshooting.md#zotero-升级后装不上).
 
-1. 从 [Releases](https://github.com/linqingxiao/sense-lingo-zotero/releases) 下载 `sense-lingo.xpi`；
-2. Zotero → `工具 / Tools` → `插件 / Plugins` → 右上角齿轮 → `Install Plugin From File…`；
-3. 选择 xpi 文件，重启 Zotero；
-4. 需要 **Zotero 7.0 ~ 11.x**（`addon/manifest.json` 的 `strict_min_version` / `strict_max_version`）。
+### 2. Add an API key
 
-> ⚠️ **Zotero 升级后装不上的第一嫌疑就是这里**。`strict_max_version` 是硬上限：写成 `"8.*"` 时，Zotero 10 会直接报"它可能无法与该版本的 Zotero 兼容"。Zotero 每次大版本更新后，把 `strict_max_version` 往前推一位并重新 `npm run build` 即可。
->
-> 排查命令（确认打包产物里的真实取值）：
->
-> ```bash
-> unzip -p .scaffold/build/sense-lingo.xpi manifest.json | grep strict_
-> ```
+Open `Edit` → `Settings` → `Sense Lingo`:
 
-## 使用
+| Field           | What to enter                                                     |
+| --------------- | ----------------------------------------------------------------- |
+| Provider preset | `OpenAI` / `DeepSeek` / `Custom (OpenAI compatible)`              |
+| API Key         | The key for that provider (required)                              |
+| Base URL, Model | Leave blank to use the preset; fill them in for a custom endpoint |
 
-1. 打开任意 PDF / EPUB 附件；
-2. 选中文本——**选一个词**或**选一整句**都可以，插件自动判定类型；
-3. 开启设置里的 **自动翻译** 后，选中文本即直接在划词弹窗内显示译文，无需任何点击；未开启时，点击弹窗中的 **翻译** 按钮同样在弹窗内显示译文；
-4. 弹窗里**只显示译文本身**，不占用右下角；划一个单词时会依次显示三行：**释义**、**美式音标**、**英式音标**（短语 / 缩写只有释义）；
-5. 需要更多信息时按快捷键 `Ctrl/⌘ + Shift + T`，会打开完整结果面板：**判定类型**（词 / 句）、**使用的模板名**、命中的原句、模型与耗时；
-6. 在结果面板中，判定不符合预期时可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；还可展开提示词临时改一版再试，满意后把内容粘贴回设置页对应的模板文本框。
-
-### 同一句话，两种划法
-
-以 `The results suggest that the proposed method can mitigate the inherent noise.` 为例：
-
-| 划选内容                            | 判定       | 走的模板                             | 期望输出                                                                                                  |
-| ----------------------------------- | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `mitigate`                          | `word`     | `promptProfileWord` → `word`         | `减轻（v.）；在此句中指降低…的程度`<br>`美式音标：/ˈmɪtɪɡeɪt/`<br>`英式音标：/ˈmɪtɪɡeɪt/`                 |
-| `inherent`                          | `word`     | `promptProfileWord` → `word`         | `固有的（adj.）；句中修饰 noise，指数据自带的噪声`<br>`美式音标：/ɪnˈhɛrənt/`<br>`英式音标：/ɪnˈhɪərənt/` |
-| `The results suggest that … noise.` | `sentence` | `promptProfileSentence` → `sentence` | `结果表明，所提方法能够减轻固有噪声。`                                                                    |
-
-关键差别：**划词时模型必须解释"在这个句子里它是什么意思"，划句时模型只需给出通顺译文、不要解释。**
-
-首次使用必须先配置 API Key（见下一节），否则点击翻译会引导到设置页。
-
-## 配置项
-
-设置入口：`编辑 / Edit` → `设置 / Settings` → `Sense Lingo`。
-
-> 下表 `键` 为简化名，实际完整键名为 `extensions.zotero.sense-lingo.<键>`，默认值写在 `addon/prefs.js` 中。
-
-| 键                         | 类型         | 默认值        | 说明                                                                                                                       |
-| -------------------------- | ------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `provider`                 | string       | `openai`      | 服务商预设：`openai` / `deepseek` / `custom`                                                                               |
-| `apiKey`                   | string       | `""`          | API Key。保存在 Zotero prefs 中（**明文**，见[隐私与安全](#隐私与安全)）                                                   |
-| `baseURL`                  | string       | 跟随 provider | 接口地址，可在 `custom` 下自由填写，自动补 `/v1` 时需注意末尾斜杠                                                          |
-| `model`                    | string       | 跟随 provider | 模型名，如 `gpt-4o-mini` / `deepseek-chat`                                                                                 |
-| `providerConfigs`          | string(JSON) | `""`          | 按服务商分别保存的 `apiKey` / `baseURL` / `model`；切换预设时自动写入/读出，运行时的生效值仍是上面三个键                   |
-| `temperature`              | string       | `"0.3"`       | 越低越稳定，翻译建议 0～0.5。**按字符串存储**，因为 Firefox pref 只支持 int/bool/string，float 会被静默截断                |
-| `maxTokens`                | number       | `1024`        | 单次回复上限                                                                                                               |
-| `targetLang`               | string       | `zh-CN`       | 目标语言；设为 `auto` 时按 Zotero 界面语言推断                                                                             |
-| `sourceLang`               | string       | `auto`        | 源语言；默认由模型自行判断                                                                                                 |
-| `selectionKindMode`        | string       | `auto`        | 选区类型判定：`auto` 自动判定 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                                          |
-| `wordMaxWords`             | number       | `3`           | 判定为"词"的最大词数，超出则按句处理                                                                                       |
-| `wordMaxChars`             | number       | `40`          | 判定为"词"的最大字符数，超出则按句处理                                                                                     |
-| `useContext`               | boolean      | `true`        | **仅 `word` 模式**：是否带出所在句（关闭后等同词典式直译）                                                                 |
-| `sentenceContextNeighbors` | boolean      | `false`       | **仅 `sentence` 模式**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                           |
-| `maxSentenceChars`         | number       | `400`         | 单句上下文长度上限，超出则截断                                                                                             |
-| `promptProfileWord`        | string       | `word`        | 划词路由 id（内部键，设置页不暴露；指向失效 id 时回退内置 `word`）                                                         |
-| `promptProfileSentence`    | string       | `sentence`    | 划句路由 id（内部键，设置页不暴露；指向失效 id 时回退内置 `sentence`）                                                     |
-| `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合；设置页的两个文本框对应 `word` / `sentence` 两个槽位的 `system` 字段                                        |
-| `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                                 |
-| `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，译文直接出现在划词弹窗内；开启后自动隐藏翻译按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过 |
-| `popupFontSize`            | number       | `12`          | 划词弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽，保持每行字数基本不变                                          |
-| `shortcutEnabled`          | boolean      | `true`        | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                                        |
-| `requestTimeoutMs`         | number       | `30000`       | 请求超时；超时后提示重试而非静默失败                                                                                       |
-| `debug`                    | boolean      | `false`       | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                                    |
-
-服务商预设对照：
-
-| provider   | baseURL                       | 默认 model      |
+| provider   | Default base URL              | Default model   |
 | ---------- | ----------------------------- | --------------- |
 | `openai`   | `https://api.openai.com/v1`   | `gpt-4o-mini`   |
 | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| `custom`   | 用户填写                      | 用户填写        |
 
-切换服务商预设时，设置页会先把当前服务商填写的 `apiKey` / `baseURL` / `model` 存入 `providerConfigs`，再载入目标服务商上一次保存的那一份；目标服务商从未配置过时三个字段会清空（留空即使用该预设的默认地址与模型）。因此 OpenAI 与 DeepSeek 的 Key、接口地址和模型互不覆盖，来回切换后仍是各自的值。
+Credentials (key / URL / model) are stored **per provider**, so switching back and forth never
+overwrites the other one. For a local model, choose `Custom` and point the base URL at a local
+OpenAI-compatible endpoint.
 
-## 提示词自定义
+### 3. Translate something
 
-设置页的 **提示词模板** 区域有两个多行文本框：**划词 · 语境辨析** 与 **划句 · 通顺翻译**。每个文本框里是发给模型的 system 提示词，直接编辑即可，**换行会原样保留**（不需要写 `\n`）。划选的文本与上下文由插件自动附在 user 消息里，无需在模板中再手写一遍。
+1. Open any PDF or EPUB attachment;
+2. Select a **word** or a **whole sentence** — the kind is detected automatically;
+3. Click **Translate** in the popup; the translation is rendered inside the popup.
+   Turn on auto-translate to skip the click.
 
-### 路由规则
+If no API key is configured yet, the popup tells you to fill it in under Settings.
 
-| 选区类型   | 判定条件（默认阈值）                    | 使用的文本框                  |
-| ---------- | --------------------------------------- | ----------------------------- |
-| `word`     | 词数 ≤ 3、无句末标点、≤ 40 字符、未跨行 | 划词 · 语境辨析（`word`）     |
-| `sentence` | 其余情况                                | 划句 · 通顺翻译（`sentence`） |
+## Usage
 
-- 两个文本框**完全独立**：只改划词模板时，划句行为完全不变；反之亦然。
-- 文本框留空 → 自动恢复该槽位的内置默认模板，并在下方给出提示。
-- 两个槽位的 id 固定为 `word` / `sentence`；路由键 `promptProfileWord` / `promptProfileSentence` 仍保留以兼容旧配置，指向失效 id 时回退内置模板并写一条 `warn` 日志。
+### Selection popup
 
-### 存储结构
+- The popup gets a **Translate** button; the result appears inline, **translation only** — no extra
+  panel in the corner.
+- A single word returns exactly three lines: **meaning (with part of speech)**, **US IPA**,
+  **UK IPA**. Phrases, acronyms and formulas return the meaning only. If a model glues the labels
+  onto one line, they are split before display.
+- With **auto-translate** enabled, selecting text translates immediately and the button is hidden.
+  When no API key is configured it stays silent instead of popping an error on every selection.
+- Popup font size is configurable (8–32 px); the popup widens proportionally so the number of
+  characters per line stays roughly the same.
+- Translations are **inline**: if the popup is closed before the response arrives, the result has
+  nowhere to go. Use the shortcut panel if you need to keep it.
 
-`extensions.zotero.sense-lingo.promptProfiles` 仍是 JSON 对象，但只保留两个槽位：
+### Shortcut and result panel
 
-```json
-{
-  "word": {
-    "name": "划词 · 语境辨析",
-    "kind": "word",
-    "system": "…设置页第一个文本框的内容…",
-    "user": "Sentence: {sentence}\nSelected text: {text}"
-  },
-  "sentence": {
-    "name": "划句 · 通顺翻译",
-    "kind": "sentence",
-    "system": "…设置页第二个文本框的内容…",
-    "user": "{text}"
-  }
-}
-```
+Press `Ctrl/⌘ + Shift + T` for the full result panel:
 
-- 设置页只编辑 `system`；`user` 是固定的传输信封（把 `{sentence}` / `{text}` 交给模型），不需要手改。
-- 两个文本框都与内置模板一致时，该 pref 存为空串，方便以后升级默认模板；一旦自定义才写入 JSON。
+| Area   | Content                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------- |
+| Header | Detected kind (word / sentence) and the template that was used                              |
+| Body   | The translation; for words, also the matched sentence (or a “no context” hint when missing) |
+| Footer | `model · latency`, plus “re-translate as sentence / word”, “edit prompt”, “copy”, “close”   |
 
-### 可用变量
+- If the detected kind is wrong, flip it with one click and re-translate — this request only, the
+  setting is untouched.
+- “Edit prompt” edits the **user message for this request** (variables already rendered), so it is a
+  one-off experiment. To change behavior permanently, edit the system prompt in Settings.
+- Inside the reader, the shortcut is bound when the selection popup renders for the first time:
+  select something once after opening a new document, then the shortcut works.
+- The shortcut also works in the main window, where no attachment context is available, so it does
+  a plain dictionary-style lookup.
 
-两种模式共用同一套变量，区别在**取值策略**：
+## Configuration
 
-| 变量                            | 含义                          | `word` 模式取值             | `sentence` 模式取值                       |
-| ------------------------------- | ----------------------------- | --------------------------- | ----------------------------------------- |
-| `{text}`                        | 划选的原始文本                | 选中的词 / 短语             | 选中的整句 / 整段                         |
-| `{sentence}`                    | 上下文句子                    | `{text}` 所在的完整句子     | **空串**（与 `{text}` 重复，故置空）      |
-| `{prevSentence}`                | 前一句                        | 空串                        | 仅 `sentenceContextNeighbors=true` 时有值 |
-| `{nextSentence}`                | 后一句                        | 空串                        | 同上                                      |
-| `{selectionType}`               | 本次判定结果                  | `word`                      | `sentence`                                |
-| `{sourceLang}` / `{targetLang}` | 语言设置                      | `auto` 时不替换为具体语言名 | 同左                                      |
-| `{itemTitle}`                   | 当前文献标题                  | 非附件场景为空串            | 同左                                      |
-| `{word}`                        | `{text}` 的别名（兼容旧模板） | 同 `{text}`                 | 同 `{text}`                               |
+Settings live under `Edit` → `Settings` → `Sense Lingo`. The full 24-key reference, provider
+isolation and `about:config` recipes are in
+**[the configuration reference](docs/configuration.md)** (Chinese).
 
-> 变量只做**纯文本替换**，不执行任何表达式；模板中未识别的 `{xxx}` 原样保留，避免误伤数学公式与 LaTeX。
+| Setting             | Default    | Purpose                                                       |
+| ------------------- | ---------- | ------------------------------------------------------------- |
+| Provider preset     | `openai`   | `openai` / `deepseek` / `custom`                              |
+| API Key             | empty      | Required; stored in plain text in Zotero prefs                |
+| Base URL / Model    | empty      | Blank = preset; a bare host gets `/v1` appended automatically |
+| Temperature         | `0.3`      | Lower is more stable; 0–0.5 is recommended for translation    |
+| Max tokens          | `1024`     | Upper bound for one response                                  |
+| Kind detection mode | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`                      |
+| Max words / chars   | `3` / `40` | Above these, a selection is treated as a sentence             |
+| Word mode context   | on         | Off = dictionary-style lookup without the containing sentence |
+| Sentence neighbours | off        | Adds one sentence before and after (more tokens)              |
+| Max sentence chars  | `400`      | Context is truncated beyond this, and the panel says so       |
+| Popup button        | on         | Inject the “Translate” button into the selection popup        |
+| Auto-translate      | off        | Translate on selection and hide the button                    |
+| Shortcut            | on         | `Ctrl/⌘ + Shift + T`                                          |
+| Popup font size     | `12`       | 8–32 px                                                       |
+| Request timeout     | `30000`    | Milliseconds; timeouts surface a retry hint                   |
+| Debug logging       | off        | Writes details to `Help → Debug Output Logging`               |
 
-**为什么 `sentence` 模式下 `{sentence}` 是空串？** 若让它等于 `{text}`，默认模板里就会出现两遍同样的句子，模型容易复读或"翻译两遍"。因此约定：`{sentence}` 只承载"待译文本之外的上下文"。确实需要把整句喂给模型时，用 `{text}` 即可。
+> `targetLang` defaults to `zh-CN` and is not exposed in the settings pane yet. Change it via
+> `about:config`: `extensions.zotero.sense-lingo.targetLang`.
 
-### 默认模板 A：划词（`word`）
+## Custom prompts
 
-设置页第一个文本框（`system`）：
+The **Prompt templates** section has two multiline boxes:
 
-```text
-You are a precise bilingual lexicographer.
+| Box               | Used when the selection is detected as |
+| ----------------- | -------------------------------------- |
+| Word · context    | a word                                 |
+| Sentence · fluent | a sentence                             |
 
-Translate the selected text into {targetLang}. You are given the sentence it
-appears in — use it ONLY to disambiguate word sense, part of speech and
-collocation. Do not translate or paraphrase the sentence itself.
+- Each box holds the **system** prompt sent to the model; edit it directly, **line breaks are
+  preserved**.
+- Leave a box empty to restore its built-in template; “Restore built-in templates” clears both.
+- The two slots are fully independent: changing the word prompt never changes sentence behavior.
+- The selected text and context are appended to the user message automatically, so you do not have
+  to write `{text}` / `{sentence}` in the template.
 
-Rules:
-1. First line: the contextual meaning in {targetLang}, followed by the part of
-   speech in parentheses, e.g. "减轻（v.）". If the selection is a fixed term or
-   acronym, give the accepted translation first, then a gloss of its meaning in
-   this paper (<= 20 chars).
-2. If the selection is a single English word, output exactly two more lines
-   after the meaning line, each on its own line:
-   美式音标：/<General American IPA>/
-   英式音标：/<British RP IPA>/
-   Use broad IPA only (no pinyin, no respelling). If both pronunciations are
-   identical, still output both lines with the same transcription.
-3. If the selection is a multi-word term, an acronym, a formula, or not a single
-   English word, output the meaning line only - no phonetic lines.
-4. Keep formulas, citation markers and proper nouns intact.
-5. Output plain text only: no Markdown, no bullet points, no extra commentary.
-```
+Common variables:
 
-插件自动附加的 user 消息（`user`，设置页不暴露）：
+| Variable          | Meaning           | `word` mode             | `sentence` mode                            |
+| ----------------- | ----------------- | ----------------------- | ------------------------------------------ |
+| `{text}`          | The selected text | the word / phrase       | the whole sentence / passage               |
+| `{sentence}`      | Context sentence  | the containing sentence | empty string (avoids duplicating `{text}`) |
+| `{prevSentence}`  | Previous sentence | empty                   | filled only when neighbours are enabled    |
+| `{nextSentence}`  | Next sentence     | empty                   | same as above                              |
+| `{selectionType}` | Detected kind     | `word`                  | `sentence`                                 |
+| `{targetLang}`    | Target language   | taken from prefs        | same                                       |
 
-```text
-Sentence: {sentence}
-Selected text: {text}
-```
+> Substitution is plain text only; unknown `{tokens}` are left untouched, so LaTeX and formulas in
+> your template survive.
 
-### 默认模板 B：划句（`sentence`）
+Built-in templates, the complete variable table and ready-to-paste examples live in
+**[the prompt guide](docs/prompts.md)** (Chinese).
 
-设置页第二个文本框（`system`）：
-
-```text
-You are a precise academic translator.
-
-Translate the text into {targetLang}. The text is already a complete sentence
-or a passage, so do not explain and do not add notes — just deliver a faithful,
-readable translation.
-
-Rules:
-1. Preserve terminology, numbers, formulas, citation markers and proper nouns.
-2. Keep the original sentence order; do not merge or split sentences.
-3. Output plain text only, never Markdown headings or bullet lists.
-4. If the text is already in {targetLang}, output it unchanged.
-```
-
-插件自动附加的 user 消息（`user`，设置页不暴露）：
+## How it works (short version)
 
 ```text
-{text}
+selection (word / sentence)
+      │
+      ▼
+detect kind   word ──► include the containing sentence as context
+              sentence ──► leave {sentence} empty; optional neighbours
+      │
+      ▼
+route to the prompt slot → render variables → POST {baseURL}/chat/completions
+      │
+      ▼
+inline popup translation / result panel (kind, template, sentence, model · latency)
 ```
 
-对照着看就很清楚：**A 的产出一行"词义 + 词性"，B 的产出一段可直接引用的译文。** 这就是把提示词按选区类型分开的意义——同一套模板无法同时把两件事做好。
+A few deliberate design choices:
 
-### 自定义示例：划词"术语速查" + 划句"直译"
+- **Kind detection is explainable**: a single ASCII word is not treated as a sentence just because it
+  ends with a period; more than 3 words, more than 40 characters, or ≥ 8 CJK characters means
+  “sentence”; a line break alone is never a signal.
+- **Sentence locating** does not rely on PDF coordinates. It tries three text sources — cached
+  attachment text → live reader documents → Zotero's EPUB parser — then matches text. When a word
+  occurs many times, a fingerprint (±40 characters captured at selection time) picks the most likely
+  occurrence.
+- **Prompt routing is one line**: the detected kind decides which slot to read, and a missing slot
+  falls back to the built-in template with a warning.
+- **One client, many providers**: OpenAI and DeepSeek both speak the OpenAI chat-completions
+  protocol; the difference is only a `baseURL` + `model` preset.
 
-把下面这段粘到设置页的 **划词 · 语境辨析** 文本框（划选文本和所在句会自动附在 user 消息末尾，所以这里不用再写 `{text}` / `{sentence}`）：
+Full pipeline, matching algorithm, error codes, caching and trade-offs:
+**[how it works](docs/how-it-works.md)** (Chinese).
 
-```text
-目标语言：{targetLang}
+## Relationship to zotero-pdf-translate
 
-请给出：
-1) 该词在上下文中的准确译法；
-2) 词性与常见搭配；
-3) 若为术语，给出该文献语境下的解释（不超过 20 字）。
-```
+[zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate) is a mature, extremely
+capable plugin (20+ services, PDF / EPUB / web / metadata / annotations / notes).
+**This project is not a replacement and does not compete on breadth.** It is deliberately narrow:
 
-把下面这段粘到 **划句 · 通顺翻译** 文本框：
+| Dimension     | zotero-pdf-translate              | Sense Lingo                                                       |
+| ------------- | --------------------------------- | ----------------------------------------------------------------- |
+| Focus         | Full translation toolbox          | One job, done deeply: selection + context                         |
+| Input         | word / paragraph / whole document | selection **+ its sentence**, with **different prompts per kind** |
+| Providers     | 20+, including classic engines    | LLM only, primarily OpenAI / DeepSeek compatible                  |
+| Prompts       | Configurable                      | **First-class**: two independent slots, fully variable-driven     |
+| Codebase size | Large                             | Intentionally small and readable                                  |
 
-```text
-把附带的文本直译为 {targetLang}，保留句序与术语，不要润色、不要解释。
-```
+What is reused is **engineering practice, not code**: the project is built on
+[zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template)
+(TypeScript + `zotero-plugin-scaffold`), uses Zotero's public
+`renderTextSelectionPopup` reader event, and borrows the declarative provider-definition style from
+zotero-pdf-translate.
 
-模板重置：设置页的"恢复内置默认模板"会清空 `promptProfiles`，并把两个文本框都恢复为内置内容；只清空单个文本框时，保存后也只恢复该槽位并给出提示。
+> ⚠️ Copying code from zotero-pdf-translate means complying with its AGPL-3.0 license. This project
+> is AGPL-3.0 as well.
 
-## 开发
+## Privacy and security
 
-### 环境要求
+**Please read this** — the plugin sends paper content to a third-party service.
 
-- Node.js ≥ 18，npm ≥ 9
-- Zotero 7（7.0+，建议 beta 与稳定版都测）
-- 用于调试的 Zotero 配置目录（`-profile` 参数或 scaffold 自动创建）
+- **What is sent**: the selected text + context (the containing sentence in word mode; two extra
+  sentences in sentence mode only when neighbours are enabled, all capped by `maxSentenceChars`) +
+  the prompt. **Never** the whole PDF, attachments, library metadata or file paths.
+- **Where it goes**: determined by `provider` / `baseURL`. With `custom`, verify the endpoint
+  yourself. No request ever goes through a proxy server run by this project.
+- **API key storage**: stored in local Zotero prefs (`extensions.zotero.sense-lingo.apiKey`) in
+  **plain text**. Any process that can read your Zotero profile can read it; do not use this on a
+  shared machine.
+- **Logs**: source text and translations are not logged by default. With `debug` on, details go to
+  Zotero's debug output — do not screenshot bug reports with debug enabled.
+- **Compliance**: follow your provider's terms and your institution's rules on sending paper content
+  off-device. For confidential material, use a local OpenAI-compatible endpoint
+  (`Custom` + a localhost URL).
 
-### 命令
+## Known limitations
+
+1. **Scanned / image-only PDFs have no context**: no text layer means no containing sentence, so the
+   plugin falls back to a dictionary-style lookup. Run OCR to restore it.
+2. **Sentence locating depends on text-layer quality**: two-column layouts, headers/footers and
+   footnotes can shift sentence boundaries.
+3. **Kind detection can be wrong**: e.g. `Not really.` or `state of the art`. Flip it in the panel,
+   tune the thresholds, or force a mode.
+4. **IPA is generated by the model**: reliable for common words, less so for rare words, proper nouns
+   and inflections. Use a dictionary for critical pronunciation.
+5. **The shortcut needs one selection first** inside a new document; from the main window there is no
+   fingerprint, so repeated words may resolve to the wrong occurrence.
+6. **No write-back to annotations / notes yet**; the panel can copy.
+
+All 15 limitations plus per-symptom fixes: **[troubleshooting](docs/troubleshooting.md)** (Chinese).
+
+## Roadmap
+
+### v0.1 — MVP ✅ shipped
+
+- [x] Plugin skeleton, build pipeline and settings pane
+- [x] Inline selection-popup translation + shortcut result panel
+- [x] Word / sentence detection with configurable thresholds
+- [x] Two prompt slots, built-in templates and variable rendering
+- [x] Sentence locating (neighbours, fingerprint disambiguation) + unit tests
+- [x] OpenAI / DeepSeek client with unified error handling
+
+### v0.2 — nicer to use
+
+- [ ] Streaming output
+- [ ] One-click write translation into annotations / notes
+- [ ] Prompt library management (add / edit / import / export)
+- [ ] Request cache (same word in the same sentence asks once)
+
+### v0.3 — more capable
+
+- [ ] Glossary / fixed terminology
+- [ ] Paragraph and whole-document translation
+- [ ] Local model support (Ollama / LM Studio)
+- [ ] Vocabulary export (CSV / Markdown)
+
+### Longer term
+
+- [ ] More UI languages (ja / de / fr)
+- [ ] Publish to the Zotero plugin directory
+
+## Development
 
 ```bash
 git clone https://github.com/linqingxiao/sense-lingo-zotero.git
 cd sense-lingo-zotero
 npm install
-
-npm start           # 开发实例（先把 .env.example 复制为 .env 并填 Zotero 路径）
-npm run build       # 产出 .scaffold/build/sense-lingo.xpi
-npm test            # vitest 单元测试
-npm run typecheck   # tsc --noEmit
-npm run lint:check  # prettier --check + eslint
 ```
 
-> 📌 现实约束：根依赖 `typescript` 固定在 **6.x**，因为 `@typescript-eslint` 依赖的 `ts-api-utils` 尚未兼容 TS 7；升级前请先确认 lint 仍可用。
+| Command              | What it does                                                    |
+| -------------------- | --------------------------------------------------------------- |
+| `npm start`          | Start a dev instance (configure Zotero path via `.env.example`) |
+| `npm run build`      | Build + type-check, producing `sense-lingo.xpi`                 |
+| `npm test`           | Vitest unit tests (10 files / 134 cases)                        |
+| `npm run typecheck`  | `tsc --noEmit`                                                  |
+| `npm run lint:check` | Prettier + ESLint                                               |
 
-### 调试
+- Requires Node.js ≥ 22.12 (Vitest 5 requirement; 24 LTS recommended) and Zotero 7.
+- `typescript` is pinned to 6.x because `ts-api-utils` does not support TS 7 yet; verify lint before
+  upgrading.
 
-- `帮助 → 调试输出`：查看 `Sense Lingo` 前缀的日志；
-- 端口 6000 的远程调试（Firefox 调试器），可按 `about:debugging` 方式附加；
-- 修改 `src/` 后热重载，修改 `addon/manifest.json` / `prefs.js` 后需重启。
+Environment setup, debugging, test layers, project structure and release flow:
+**[development guide](docs/development.md)** (Chinese).
 
-### 测试策略
+## Contributing
 
-`npm test` 用 [vitest](https://vitest.dev/) 直接跑纯函数，不需要启动 Zotero；当前 **74 个用例全部通过**。
+- Bugs and feature requests: open an [issue](https://github.com/linqingxiao/sense-lingo-zotero/issues)
+  with your Zotero version, plugin version, provider/model (**never an API key**) and relevant logs.
+- Before opening a PR, make sure `npm run build`, `npm test` and `npm run lint:check` all pass.
+- New pure logic should live under `src/modules/reader/` or `src/modules/llm/` and come with tests.
 
-| 层             | 是否单测 | 说明                                                                                                                     |
-| -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 选区类型判定   | ✅ 必测  | 边界值：1 / 3 / 4 词、含 / 不含句末标点、跨行、中英混排、纯数字；阈值可配后需覆盖 `alwaysWord` / `alwaysSentence`        |
-| 提示词路由     | ✅ 必测  | `word` 取 `promptProfileWord`、`sentence` 取 `promptProfileSentence`；两键互不影响；指向不存在的 id 时回退内置模板并告警 |
-| 分句与文本定位 | ✅ 必测  | 纯函数，输入文本片段 → 期望句子；覆盖缩写、换行断词、多命中、无命中、前后句扩展                                          |
-| 提示词渲染     | ✅ 必测  | 变量替换、未知变量保留、`{sentence}` 在 sentence 模式为空串、前后句未开启时为空串                                        |
-| LLM 响应解析   | ✅ 必测  | 正常 / 空 choices / 错误码 / 超时 / 非 JSON                                                                              |
-| Zotero UI 注入 | ⚠️ 手工  | 依赖真实阅读器，靠人工回归                                                                                               |
-| 端到端         | ⚠️ 手工  | 真实 API Key 下分别跑一遍"划词"和"划句"主流程                                                                            |
+## Acknowledgements and license
 
-## 项目结构
+- Architecture and engineering practice come from
+  [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template),
+  [zotero-plugin-scaffold](https://github.com/northword/zotero-plugin-scaffold) and
+  [zotero-types](https://github.com/windingwind/zotero-types);
+- Feature and interaction inspiration come from
+  [zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate);
+- Thanks to the Zotero community.
 
-```text
-.
-├── addon/                          # 静态资源（打包进 xpi）
-│   ├── manifest.json               # 插件元信息、兼容版本
-│   ├── bootstrap.js                # Zotero 7 bootstrap 入口
-│   ├── prefs.js                    # 默认偏好设置（本文档"配置项"的来源）
-│   ├── content/
-│   │   ├── preferences.xhtml       # 设置页（XUL + html: 混合片段）
-│   │   ├── preferences.js          # 设置页 shim：监听 showing 事件
-│   │   └── icons/                  # favicon.png / favicon@0.5x.png
-│   └── locale/
-│       ├── en-US/ { addon, preferences }.ftl
-│       └── zh-CN/ { addon, preferences }.ftl
-├── src/
-│   ├── index.ts                    # 入口：创建 addon 实例并挂到 Zotero
-│   ├── hooks.ts                    # 生命周期 / 设置页事件分发
-│   ├── addon.ts                    # 插件基类与全局状态
-│   ├── modules/
-│   │   ├── translate.ts            # 主管线：类型 → 上下文 → 提示词 → LLM
-│   │   ├── controller.ts           # UI 与管线之间：状态机 + 错误文案
-│   │   ├── reader/
-│   │   │   ├── selectionPopup.ts   # 划词弹窗：按钮 + 内联译文
-│   │   │   ├── popupTranslation.ts # 弹窗译文请求共享 / 短缓存（纯逻辑）
-│   │   │   ├── selectionKind.ts    # word / sentence 判定（纯函数）
-│   │   │   ├── sentence.ts         # 句子定位 + 前后句（纯函数）
-│   │   │   ├── textSource.ts       # Zotero.Fulltext 取全文 + 缓存
-│   │   │   ├── selectionState.ts   # 每个文档最近一次选区
-│   │   │   └── shortcuts.ts        # Ctrl/⌘+Shift+T
-│   │   ├── llm/
-│   │   │   ├── client.ts           # OpenAI 兼容客户端（超时/错误码归一）
-│   │   │   ├── providers.ts        # openai / deepseek / custom 预设
-│   │   │   ├── prompt.ts           # 模板槽位、默认模板、路由与回退
-│   │   │   ├── format.ts           # 划词三行格式归一（释义 / 美式 / 英式）
-│   │   │   └── render.ts           # 变量渲染
-│   │   └── ui/
-│   │       ├── resultPanel.ts      # 阅读器内的译文面板
-│   │       └── preferences.ts      # 设置页逻辑与模板保存
-│   └── utils/
-│       └── prefs.ts  locale.ts  logger.ts
-├── test/                           # vitest 单元测试
-├── typings/global.d.ts             # 全局声明 + PluginPrefsMap
-├── zotero-plugin.config.ts         # scaffold 配置
-├── eslint.config.mjs
-└── package.json
-```
-
-## 隐私与安全
-
-**必须读**，因为本插件会把论文内容发送到第三方服务。
-
-- **发送了什么**：划选的文本 + 上下文（`word` 模式为所在句；`sentence` 模式仅在开启 `sentenceContextNeighbors` 时带前后各一句，均受 `maxSentenceChars` 限制）+ 提示词。**不会**上传整篇 PDF、附件、文献库信息或文件路径。
-- **发给了谁**：由 `provider` / `baseURL` 决定。使用 `custom` 时请自行确认该端点可信。翻译请求不经过任何本项目的中转服务器。
-- **API Key 存储**：保存在本机 Zotero prefs（`extensions.zotero.sense-lingo.apiKey`），**未加密**。任何能读取你 Zotero 配置目录的进程都能拿到它。不要在多用户共用机器上使用。
-- **日志**：默认不记录原文与译文；`debug` 开启后会写入 Zotero 调试输出，请勿在开启 debug 时截图上报。
-- **合规**：请遵守你所用服务商的条款，以及所在机构对文献内容外发的规定。涉密/受限材料请改用本地部署的 OpenAI 兼容端点。
-
-## 路线图
-
-### v0.1 — MVP ✅ 已实现
-
-- [x] 插件骨架（template + scaffold + 打包）
-- [x] 设置页：provider / apiKey / model / targetLang
-- [x] 划词弹窗内联译文（只显示译文，不弹右下角面板）+ 快捷键
-- [x] 选区类型判定（word / sentence）+ 阈值可配 + 单测
-- [x] 双提示词槽位 `promptProfileWord` / `promptProfileSentence` + 内置 `word` / `sentence` 模板
-- [x] 句子定位算法（含前后句扩展）+ 单测
-- [x] OpenAI / DeepSeek 客户端 + 错误处理
-- [x] 提示词模板渲染（路由 + 变量）+ 单测
-- [x] 快捷键结果面板（显示判定类型，支持一键切换重译、临时改提示词、复制）
-
-> v0.1 未包含 CI workflow（`.github/workflows`），如需自动打包与 Release 请补上。
-
-### v0.2 — 好用
-
-- [ ] 流式输出
-- [ ] 译文一键写入注释 / 笔记
-- [ ] 多套提示词管理 UI（增删改、导入导出）
-- [ ] 请求缓存（同一词在同一句只请求一次）
-
-### v0.3 — 更强
-
-- [ ] 术语表与固定译法
-- [ ] 段落 / 全文翻译
-- [ ] 本地模型适配（Ollama / LM Studio）
-- [ ] 生词本导出（CSV / Markdown）
-
-### 长期
-
-- [ ] 多语言 UI 补齐（ja / de / fr）
-- [ ] 发布到 Zotero 插件目录
-
-## 已知限制
-
-1. **扫描版 / 图片型 PDF 没有上下文**。没有文本层时取不到所在句，快捷键结果面板会提示"未取到上下文"并降级为纯词义翻译；先做 OCR 即可恢复。
-2. **句子定位依赖文本层质量**。双栏排版、页眉页脚、脚注混排可能导致句子边界识别偏移，此时会退化为字符窗口。
-3. **公式与表格**：PDF 文本层里的公式往往乱序，译文可能失真；建议只选普通正文。
-4. **Token 成本**：`word` 模式每次带一句上下文，比纯词翻译贵但远低于整段翻译；`sentence` 模式开启 `sentenceContextNeighbors` 后上下文最多翻三倍，注意成本。
-5. **选区类型可能误判**。典型误判：`Not really.`（含句末标点 → 判为 `sentence`）、四词术语 `state of the art`（超出 `wordMaxWords` → 判为 `sentence`）、跨行被断开的单个长词（判为 `sentence`）。面板可一键切换类型重译；也可调 `wordMaxWords` / `wordMaxChars`，或设 `selectionKindMode` 强制单一模式。
-6. **不支持 Zotero 6**。
-7. **划词弹窗按钮位置**受阅读器版本影响，Zotero 升级后可能需要适配。
-8. **快捷键首次需先划一次词**。`keydown` 监听是在阅读器首次触发 `renderTextSelectionPopup` 时绑定到该文档上的；打开新文献后先划一下，之后快捷键即可用。
-9. **暂不支持把译文写回注释 / 笔记**（v0.2），面板目前只提供复制。
-10. **EPUB 的上下文来源分四级**：附件全文缓存 → 选区锚点块 → 阅读器文档（含嵌套 iframe）→ Zotero 的 EPUB 解析器。最后一级要读整本书，**首次触发会慢 1～3 秒**（之后按附件缓存）。若四级都取不到才会提示"未取到上下文"。
-11. **没有选区指纹时可能取到重复词的错误位置**。指纹在主窗口里通过快捷键触发时拿不到（阅读器内触发没问题），此时若同一个词在文本里出现多次，只能回退到"第一个合理位置"。
-12. **划词译文是内联的**：请求返回前如果弹窗被关闭，译文不会再出现在别处；需要完整信息（判定类型、模板、耗时、重译）请用快捷键打开结果面板。
-13. **音标由大模型生成**：常见词基本可靠，罕见词、专有名词、屈折形式或短语可能不准；关键发音请以词典为准。短语 / 缩写默认不输出音标，避免模型硬编。
-
-## 待确认事项
-
-以下决策尚未拍板，欢迎开 Issue 讨论：
-
-1. **插件标识**：`addonRef` 用 `sense-lingo`，插件 ID 用 `sense-lingo@linqingxiao.github.io`？是否有既有命名习惯需要遵循。
-2. **License**：默认 AGPL-3.0（与参考项目一致）。若希望更宽松（MIT/Apache-2.0），现在改成本最低。
-3. **是否内置传统翻译引擎**（如 Google / 有道）作为"零配置可用"兜底？我的倾向是**不做**，保持"只做 LLM"的纯度。
-4. **翻译结果是否默认写入注释**？倾向默认**不写**，改为面板内显式按钮，避免污染文献库。
-5. **是否需要代理设置**（`http_proxy`）在插件内可配？面向中国大陆用户可能必要。
-6. **句子定位的替代方案**：是否需要更精确的坐标级方案（基于 PDF.js 的 `getTextContent` + bounding box），代价是实现复杂度显著上升。
-7. **选区类型判定的阈值与默认值**：默认"≤ 3 词且 ≤ 40 字符且无句末标点"判为 `word`。是否还要"学习用户习惯"（同一文献内连续两次手动切换后，临时记住该偏好）？`sentenceContextNeighbors` 是否应该默认开启而不是 `false`？
-8. **是否允许词/句使用不同模型**：例如划词用 `gpt-4o-mini`、划句用 `deepseek-chat`（成本与质量权衡）。目前设计为共用一套 `model`，拆分只需加一个 `modelSentence` 键，但会让设置页变复杂，想先听意见。
-
-## 致谢与许可
-
-- 架构与工程实践来自 [zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template)、[zotero-plugin-scaffold](https://github.com/northword/zotero-plugin-scaffold)、[zotero-types](https://github.com/windingwind/zotero-types)；
-- 功能设计与交互灵感来自 [zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate)；
-- 感谢 Zotero 社区。
-
-本项目以 **AGPL-3.0** 许可发布（见 `LICENSE`），与参考项目保持一致。使用前请自行确认所在地区法律法规与服务商条款。
+Released under **AGPL-3.0** (see [`LICENSE`](LICENSE)), matching the reference projects.
+Check your local regulations and your provider's terms before use.
