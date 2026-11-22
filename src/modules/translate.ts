@@ -12,6 +12,7 @@ import {
   type SelectionKind,
 } from "./reader/selectionKind";
 import {
+  normalizeText,
   resolveSentence,
   type SentenceContext,
   type SentenceFingerprint,
@@ -215,7 +216,11 @@ async function resolveContext(
 export async function translate(
   input: TranslateInput,
 ): Promise<TranslateResult> {
-  const text = (input.text ?? "").trim();
+  // Annotation text comes from PDF/EPUB layout spans and can contain soft
+  // hyphens, zero-width characters and visual line breaks. Use the same
+  // normalization as context lookup so kind detection, prompting and matching
+  // all operate on one representation.
+  const text = normalizeText(input.text ?? "");
   if (!text) {
     throw new Error("EMPTY_SELECTION");
   }
@@ -244,6 +249,7 @@ export async function translate(
 
   const userPrompt = input.userPromptOverride ?? rendered.user;
   log("translate", {
+    text: text.slice(0, 100).replace(/\s+/gu, " "),
     kind,
     profileId: rendered.profileId,
     hasContext: !!context,

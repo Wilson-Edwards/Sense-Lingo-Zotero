@@ -14,6 +14,10 @@ describe("normalizeText", () => {
   it("collapses whitespace runs and CRLF", () => {
     expect(normalizeText("a\r\n\r\n  b\t c")).toBe("a b c");
   });
+
+  it("joins PDF line wraps inside Chinese text", () => {
+    expect(normalizeText("数\n息\n冥想")).toBe("数息冥想");
+  });
 });
 
 describe("isAbbreviationEnding", () => {

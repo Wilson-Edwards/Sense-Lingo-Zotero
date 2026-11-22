@@ -94,13 +94,18 @@ export interface SentenceContext {
  * (`trans-\nlation` -> `translation`) and collapse whitespace runs.
  */
 export function normalizeText(raw: string): string {
-  return raw
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\u00AD\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\u00A0/g, " ")
-    .replace(/(\p{L})-\s*\n\s*(\p{L})/gu, "$1$2")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    raw
+      .replace(/\r\n?/g, "\n")
+      .replace(/[\u00AD\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\u00A0/g, " ")
+      // PDF text layers may put a visual line break between adjacent Han
+      // characters. Joining it restores the selected word/title for lookup.
+      .replace(/(\p{Script=Han})\s*\n\s*(?=\p{Script=Han})/gu, "$1")
+      .replace(/(\p{L})-\s*\n\s*(\p{L})/gu, "$1$2")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 function isWordChar(ch: string | undefined): boolean {

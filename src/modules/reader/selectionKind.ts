@@ -85,11 +85,10 @@ function endsWithTerminator(text: string): boolean {
  *
  * Order matters and mirrors the documented rules:
  * 1. explicit mode wins
- * 2. multi-line selection -> sentence
- * 3. contains a real inner terminator -> sentence
- * 4. ends with a real terminator -> sentence
- * 5. too many words / too many chars / clearly CJK -> sentence
- * 6. otherwise -> word
+ * 2. contains a real inner terminator -> sentence
+ * 3. ends with a real terminator -> sentence
+ * 4. too many words / too many chars / clearly CJK -> sentence
+ * 5. otherwise -> word (including short PDF line-wrap artefacts)
  */
 export function detectSelectionKind(
   raw: string,
@@ -110,10 +109,14 @@ export function detectSelectionKind(
   if (!text) {
     return "word";
   }
-  if (text.includes("\n")) {
-    return "sentence";
-  }
-  if (hasInnerTerminator(text) || endsWithTerminator(text)) {
+  // PDF/EPUB selections commonly include the punctuation immediately after a
+  // highlighted word.  Treating `method.` as a complete sentence makes the
+  // last word of a title or sentence take the sentence prompt unexpectedly.
+  // A real terminated sentence still has multiple tokens (for example
+  // `Not really.`), while the length/CJK checks below continue to catch long
+  // unspaced selections.
+  const isSingleWord = countWords(text) === 1 && countCjk(text) === 0;
+  if (!isSingleWord && (hasInnerTerminator(text) || endsWithTerminator(text))) {
     return "sentence";
   }
   if (countWords(text) > maxWords) {
@@ -125,6 +128,9 @@ export function detectSelectionKind(
   if (countCjk(text) >= 8) {
     return "sentence";
   }
+  // Do not use a line break by itself as a sentence signal. PDF text layers
+  // often insert one inside the final word or phrase of a visual line. Real
+  // multi-line sentences are still caught by the punctuation/size rules above.
   return "word";
 }
 

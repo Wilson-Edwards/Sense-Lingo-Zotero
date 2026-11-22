@@ -24,6 +24,11 @@ describe("detectSelectionKind", () => {
     expect(detectSelectionKind("Not really.")).toBe("sentence");
   });
 
+  it("keeps a title's final punctuated word as a word", () => {
+    expect(detectSelectionKind("translation.")).toBe("word");
+    expect(detectSelectionKind("translation!”")).toBe("word");
+  });
+
   it("does not treat `et al.` as a sentence", () => {
     expect(detectSelectionKind("et al.")).toBe("word");
   });
@@ -34,6 +39,11 @@ describe("detectSelectionKind", () => {
 
   it("classifies a multi-line selection as a sentence", () => {
     expect(detectSelectionKind("line one\nline two")).toBe("sentence");
+  });
+
+  it("ignores a short PDF line-wrap artefact in a selected word", () => {
+    expect(detectSelectionKind("数息\n冥想")).toBe("word");
+    expect(detectSelectionKind("Medi\ntation")).toBe("word");
   });
 
   it("classifies a long selection as a sentence", () => {
