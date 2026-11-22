@@ -151,6 +151,41 @@ function comparableText(text: string): string {
     .trim();
 }
 
+function isWordCharacter(char: string | undefined): boolean {
+  return !!char && /[\p{L}\p{N}_]/u.test(char);
+}
+
+/**
+ * Prefer the live DOM selection when Zotero's annotation text has appended an
+ * adjacent visual line. The containment must end on word boundaries so a stale
+ * partial selection such as `Effect` cannot shorten `Effectiveness`.
+ */
+export function preferLiveSelectionText(
+  annotationText: string,
+  liveText: string,
+): string {
+  const annotation = comparableText(annotationText);
+  const live = comparableText(liveText);
+  if (!live || !annotation || live === annotation) {
+    return live === annotation && live ? liveText.trim() : annotationText;
+  }
+
+  let from = 0;
+  while (from <= annotation.length - live.length) {
+    const index = annotation.indexOf(live, from);
+    if (index < 0) {
+      break;
+    }
+    const before = annotation[index - 1];
+    const after = annotation[index + live.length];
+    if (!isWordCharacter(before) && !isWordCharacter(after)) {
+      return liveText.trim();
+    }
+    from = index + 1;
+  }
+  return annotationText;
+}
+
 /**
  * Find the nested reader document that owns the real selection. EPUB selection
  * lives in a section document while the popup event points at the outer reader

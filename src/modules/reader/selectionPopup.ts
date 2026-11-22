@@ -30,6 +30,7 @@ import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
   readSelectionAnchorFromRange,
+  preferLiveSelectionText,
   type SelectionAnchor,
 } from "./selectionAnchor";
 import { attachShortcutToDoc } from "./shortcuts";
@@ -91,18 +92,84 @@ function hasAnchor(anchor: SelectionAnchor): boolean {
   );
 }
 
-function captureAnchor(
+interface CapturedSelection {
+  text: string;
+  anchor: SelectionAnchor;
+}
+
+const EMBEDDED_TRANSLATION_SELECTOR = [
+  ".immersive-translate-target-wrapper",
+  "[data-immersive-translate-translation-element-mark]",
+].join(",");
+
+/**
+ * Return only the source-language part of a range that starts outside an
+ * Immersive Translate result. Some EPUBs persist those generated nodes after a
+ * `<br>`, and Zotero can include the whole adjacent node when the selected word
+ * ends immediately before it.
+ */
+function sourceTextFromRange(range: Range): string {
+  const raw = range.toString().trim();
+  const startNode = range.startContainer;
+  const startElement =
+    startNode.nodeType === 1 ? (startNode as Element) : startNode.parentElement;
+  if (startElement?.closest(EMBEDDED_TRANSLATION_SELECTOR)) {
+    return raw;
+  }
+  try {
+    const fragment = range.cloneContents();
+    for (const translated of fragment.querySelectorAll(
+      EMBEDDED_TRANSLATION_SELECTOR,
+    )) {
+      translated.remove();
+    }
+    return fragment.textContent?.trim() || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function captureSelection(
   event: SelectionPopupEvent,
   text: string,
-): SelectionAnchor {
+): CapturedSelection {
   const docs = collectReaderDocuments(event.doc);
   const readerDoc = event.reader?._iframeWindow?.document;
   if (readerDoc && readerDoc !== event.doc) {
     docs.push(...collectReaderDocuments(readerDoc));
   }
+
+  // Zotero's annotation text can include the next visual line when the range
+  // ends at a PDF/EPUB span boundary. The DOM Selection usually still contains
+  // exactly what the user highlighted, so prefer that bounded substring.
+  const visited = new Set<Document>();
+  for (const candidateDoc of docs) {
+    if (visited.has(candidateDoc)) {
+      continue;
+    }
+    visited.add(candidateDoc);
+    try {
+      const selection = candidateDoc.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        continue;
+      }
+      const range = selection.getRangeAt(0);
+      const liveText = sourceTextFromRange(range);
+      const preferredText = preferLiveSelectionText(text, liveText);
+      if (preferredText !== text) {
+        return {
+          text: preferredText,
+          anchor: readSelectionAnchorFromRange(range),
+        };
+      }
+    } catch {
+      // A nested reader frame can disappear while the popup is being built.
+    }
+  }
+
   const liveAnchor = readBestSelectionAnchor(docs, text);
   if (hasAnchor(liveAnchor)) {
-    return liveAnchor;
+    return { text, anchor: liveAnchor };
   }
 
   // The live selection can already be collapsed on some Zotero/EPUB builds.
@@ -118,13 +185,16 @@ function captureAnchor(
         position,
       );
       if (range) {
-        return readSelectionAnchorFromRange(range);
+        return {
+          text: preferLiveSelectionText(text, sourceTextFromRange(range)),
+          anchor: readSelectionAnchorFromRange(range),
+        };
       }
     } catch {
       // Zotero internals vary by version; absence only disables this fallback.
     }
   }
-  return liveAnchor;
+  return { text, anchor: liveAnchor };
 }
 
 function createResultSlot(doc: Document, fontSize: number): HTMLDivElement {
@@ -153,11 +223,11 @@ function showInlineResult(
 
 function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   const doc = event.doc;
-  const text = event.params?.annotation?.text ?? "";
-  if (!doc || !text) {
+  const annotationText = event.params?.annotation?.text ?? "";
+  if (!doc || !annotationText) {
     return;
   }
-  const anchor = captureAnchor(event, text);
+  const { text, anchor } = captureSelection(event, annotationText);
   rememberSelection(doc, text, anchor);
   const itemID = event.reader?.itemID;
   attachShortcutToDoc(doc, itemID);
