@@ -66,27 +66,79 @@ export const DEFAULT_PROFILES: PromptProfiles = {
     system: WORD_SYSTEM,
     user: WORD_USER,
   },
-  "word-casual": {
-    name: "划词 · 只要中文意思",
-    kind: "word",
-    system:
-      "Translate into {targetLang}. Output the contextual meaning only, no explanation.",
-    user: "{text}\n({sentence})",
-  },
   [SENTENCE_PROFILE_ID]: {
     name: "划句 · 通顺翻译",
     kind: "sentence",
     system: SENTENCE_SYSTEM,
     user: SENTENCE_USER,
   },
-  "sentence-neighbor": {
-    name: "划句 · 带前后句衔接",
-    kind: "sentence",
-    system:
-      "You are a precise academic translator. Translate the text into {targetLang}, keeping coherence with the neighboring sentences. Output only the translation of the text.",
-    user: "Previous: {prevSentence}\nText: {text}\nNext: {nextSentence}",
-  },
 };
+
+/**
+ * The two slots the settings pane edits. Order matters: it is the display order
+ * of the textareas (word first, sentence second).
+ */
+export const EDITABLE_PROFILE_IDS = [
+  WORD_PROFILE_ID,
+  SENTENCE_PROFILE_ID,
+] as const;
+
+export type EditableProfileId = (typeof EDITABLE_PROFILE_IDS)[number];
+
+/** System prompts as shown in the two settings textareas. */
+export type ProfileTemplates = Record<EditableProfileId, string>;
+
+/** Read the editable system prompts, defaulting when a slot is missing. */
+export function readProfileTemplates(
+  profiles: PromptProfiles,
+): ProfileTemplates {
+  return {
+    word:
+      profiles[WORD_PROFILE_ID]?.system ||
+      DEFAULT_PROFILES[WORD_PROFILE_ID].system,
+    sentence:
+      profiles[SENTENCE_PROFILE_ID]?.system ||
+      DEFAULT_PROFILES[SENTENCE_PROFILE_ID].system,
+  };
+}
+
+/**
+ * Rebuild the two slots from the settings textareas.
+ *
+ * A blank textarea falls back to its built-in prompt, so accidentally clearing
+ * a box cannot break translation. `current` is only used to keep a `user`
+ * template that an older release stored through the JSON editor.
+ */
+export function buildProfiles(
+  templates: ProfileTemplates,
+  current?: PromptProfiles,
+): PromptProfiles {
+  const result: PromptProfiles = {};
+  for (const id of EDITABLE_PROFILE_IDS) {
+    const fallback = DEFAULT_PROFILES[id];
+    result[id] = {
+      ...fallback,
+      system: templates[id].trim() || fallback.system,
+      user: current?.[id]?.user ?? fallback.user,
+    };
+  }
+  return result;
+}
+
+/** True when both slots still match the built-ins (the pref can stay empty). */
+export function isDefaultProfiles(profiles: PromptProfiles): boolean {
+  const ids = Object.keys(profiles);
+  if (ids.length !== EDITABLE_PROFILE_IDS.length) {
+    return false;
+  }
+  return EDITABLE_PROFILE_IDS.every((id) => {
+    const profile = profiles[id];
+    const fallback = DEFAULT_PROFILES[id];
+    return (
+      profile?.system === fallback.system && profile?.user === fallback.user
+    );
+  });
+}
 
 export function cloneProfiles(profiles: PromptProfiles): PromptProfiles {
   const copy: PromptProfiles = {};
@@ -107,8 +159,11 @@ function isValidProfile(value: unknown): value is PromptProfile {
 }
 
 /**
- * Parse the `promptProfiles` pref. Never throws: a broken JSON string yields the
- * built-in profiles, because a translation must still be possible.
+ * Parse the `promptProfiles` pref into the two editable slots.
+ *
+ * Never throws: a broken JSON string yields the built-in prompts, because a
+ * translation must still be possible. Unknown ids (e.g. presets from an older
+ * release) are ignored so the settings pane always shows what is actually used.
  */
 export function parseProfiles(raw: unknown): PromptProfiles {
   const result = cloneProfiles(DEFAULT_PROFILES);
@@ -124,18 +179,14 @@ export function parseProfiles(raw: unknown): PromptProfiles {
   if (!parsed || typeof parsed !== "object") {
     return result;
   }
-  for (const [id, profile] of Object.entries(
-    parsed as Record<string, unknown>,
-  )) {
-    if (!id || !isValidProfile(profile)) {
+  const stored = parsed as Record<string, unknown>;
+  for (const id of EDITABLE_PROFILE_IDS) {
+    const profile = stored[id];
+    if (!isValidProfile(profile)) {
       continue;
     }
     result[id] = {
-      name: typeof profile.name === "string" ? profile.name : id,
-      kind:
-        profile.kind === "word" || profile.kind === "sentence"
-          ? profile.kind
-          : undefined,
+      ...DEFAULT_PROFILES[id],
       system: profile.system,
       user: profile.user,
     };

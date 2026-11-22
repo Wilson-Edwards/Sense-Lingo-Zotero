@@ -8,14 +8,23 @@ interface FluentPattern {
 
 let l10n: any;
 
-/** Load the addon FTL bundle. Called once during startup. */
+/**
+ * Load the FTL bundles used by `getString`.
+ *
+ * Both bundles are registered: the reader/popup strings live in `addon.ftl`,
+ * while the settings pane strings live in `preferences.ftl` (the settings
+ * window also loads the latter directly through its `linkset`).
+ */
 export function initLocale(): void {
   try {
     const LocalizationCtor: any =
       typeof Localization === "undefined"
         ? (Zotero.getMainWindow() as any)?.Localization
         : Localization;
-    l10n = new LocalizationCtor([`${config.addonRef}-addon.ftl`], true);
+    l10n = new LocalizationCtor(
+      [`${config.addonRef}-addon.ftl`, `${config.addonRef}-preferences.ftl`],
+      true,
+    );
   } catch (e) {
     warn("Failed to initialize locale", e);
   }

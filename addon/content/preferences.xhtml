@@ -2,7 +2,9 @@
   .sl-section { margin-bottom: 12px; } .sl-row { margin-bottom: 6px; } .sl-row
   label { min-width: 180px; } .sl-hint { color: #6b7280; font-size: 11px;
   margin: 0 0 6px 186px; } .sl-section h3 { font-size: 13px; margin: 6px 0 4px;
-  }
+  } .sl-block-hint { color: #6b7280; font-size: 11px; margin: 4px 0 6px; }
+  .sl-prompt { width: 100%; box-sizing: border-box; font: 12px/1.45
+  ui-monospace, SFMono-Regular, Menlo, monospace; }
 </html:style>
 
 <linkset>
@@ -109,34 +111,6 @@
         style="width: 90px"
       />
     </hbox>
-
-    <hbox align="center" class="sl-row">
-      <html:label
-        for="sl-promptProfileWord"
-        data-l10n-id="pref-profile-word"
-      ></html:label>
-      <html:input
-        type="text"
-        id="sl-promptProfileWord"
-        list="sl-profile-list"
-        style="min-width: 240px"
-      />
-    </hbox>
-
-    <hbox align="center" class="sl-row">
-      <html:label
-        for="sl-promptProfileSentence"
-        data-l10n-id="pref-profile-sentence"
-      ></html:label>
-      <html:input
-        type="text"
-        id="sl-promptProfileSentence"
-        list="sl-profile-list"
-        style="min-width: 240px"
-      />
-    </hbox>
-
-    <html:datalist id="sl-profile-list"></html:datalist>
   </vbox>
 
   <vbox class="sl-section">
@@ -174,24 +148,38 @@
 
   <vbox class="sl-section">
     <label><html:h3 data-l10n-id="pref-head-prompts"></html:h3></label>
+    <html:div class="sl-block-hint" data-l10n-id="pref-prompt-hint"></html:div>
     <html:div
-      id="sl-profiles-status"
+      id="sl-prompt-status"
       style="color: #b42318; min-height: 14px"
     ></html:div>
+
+    <html:div class="sl-row">
+      <html:label
+        for="sl-promptWord"
+        data-l10n-id="pref-word-template"
+      ></html:label>
+    </html:div>
     <html:textarea
-      id="sl-promptProfiles"
+      id="sl-promptWord"
+      class="sl-prompt"
       spellcheck="false"
-      style="
-        width: 100%;
-        box-sizing: border-box;
-        min-height: 200px;
-        font:
-          12px/1.45 ui-monospace,
-          SFMono-Regular,
-          Menlo,
-          monospace;
-      "
+      style="min-height: 170px"
     ></html:textarea>
+
+    <html:div class="sl-row" style="margin-top: 10px">
+      <html:label
+        for="sl-promptSentence"
+        data-l10n-id="pref-sentence-template"
+      ></html:label>
+    </html:div>
+    <html:textarea
+      id="sl-promptSentence"
+      class="sl-prompt"
+      spellcheck="false"
+      style="min-height: 140px"
+    ></html:textarea>
+
     <hbox style="margin-top: 6px">
       <html:button id="sl-reset-profiles" data-l10n-id="pref-reset-profiles" />
     </hbox>

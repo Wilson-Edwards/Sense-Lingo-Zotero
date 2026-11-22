@@ -46,19 +46,19 @@
 
 ### v0.1（MVP，计划中）
 
-| 能力               | 说明                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| 🔤 划词 / 划句翻译 | 在 Zotero 阅读器（PDF / EPUB）中选中文本，译文直接显示在原生划词弹窗内（只有译文）                               |
-| 🗣 美英音标         | 划词结果固定三行：**释义** / **美式音标** / **英式音标**，模型粘连时展示前也会自动拆行；短语、缩写、公式只给释义 |
-| 🎯 双提示词路由    | **划一个词**和**划一整句**使用两套独立提示词：前者给"语境词义 + 词性"，后者给"通顺译文"。两套互不干扰，分别配置  |
-| 🧩 语境增强        | `word` 模式自动带出所在句用于消歧；`sentence` 模式可选带出前后句用于衔接                                         |
-| 🤖 多服务商        | 原生支持 **OpenAI** 与 **DeepSeek**，并通过"OpenAI 兼容"模式覆盖任意自建/第三方网关                              |
-| ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；词、句模板各存一份，可多套切换          |
-| 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                           |
-| ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                           |
-| 🪄 自动翻译        | 选中文本立即在弹窗内出译文，无需点击按钮；开启后自动隐藏翻译按钮；默认关闭，避免误触发与额外费用                 |
-| 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                  |
-| 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                               |
+| 能力               | 说明                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 🔤 划词 / 划句翻译 | 在 Zotero 阅读器（PDF / EPUB）中选中文本，译文直接显示在原生划词弹窗内（只有译文）                                        |
+| 🗣 美英音标         | 划词结果固定三行：**释义** / **美式音标** / **英式音标**，模型粘连时展示前也会自动拆行；短语、缩写、公式只给释义          |
+| 🎯 双提示词路由    | **划一个词**和**划一整句**使用两套独立提示词：前者给"语境词义 + 词性"，后者给"通顺译文"。两套互不干扰，分别配置           |
+| 🧩 语境增强        | `word` 模式自动带出所在句用于消歧；`sentence` 模式可选带出前后句用于衔接                                                  |
+| 🤖 多服务商        | 原生支持 **OpenAI** 与 **DeepSeek**，并通过"OpenAI 兼容"模式覆盖任意自建/第三方网关                                       |
+| ✍️ 自定义提示词    | 模板可完全改写，支持 `{text}` / `{sentence}` / `{selectionType}` 等变量；设置页为词、句各提供一个多行文本框，换行原样保留 |
+| 🎛️ 模型可配        | 自定义 `baseURL`、`model`、`temperature`、`max_tokens`                                                                    |
+| ⚡ 快捷键          | 键盘触发翻译，无需鼠标                                                                                                    |
+| 🪄 自动翻译        | 选中文本立即在弹窗内出译文，无需点击按钮；开启后自动隐藏翻译按钮；默认关闭，避免误触发与额外费用                          |
+| 🔁 类型可纠正      | 自动判定词/句失误时，面板一键切换类型并立即重译                                                                           |
+| 🌐 中英双语界面    | 界面文案通过 Fluent 本地化，默认 `zh-CN` / `en-US`                                                                        |
 
 ### 后续版本
 
@@ -73,13 +73,13 @@
 
 [zotero-pdf-translate](https://github.com/windingwind/zotero-pdf-translate) 是一个成熟、强大、功能极其全面的插件（20+ 翻译服务，支持 PDF / EPUB / 网页 / 元数据 / 注释 / 笔记翻译）。**本项目不是它的替代品，也不打算在功能广度上与之竞争**，而是刻意做窄：
 
-| 维度     | zotero-pdf-translate    | Sense Lingo（本项目）                                      |
-| -------- | ----------------------- | ---------------------------------------------------------- |
-| 定位     | 全场景翻译工具箱        | 单点做深：划词 + 语境                                      |
-| 输入单位 | 词 / 段 / 整篇 / 元数据 | 划选文本 **+ 所在句子**，且**按"词/句"分派不同提示词**     |
-| 服务商   | 20+，含传统翻译引擎     | 只做 LLM，主打 OpenAI / DeepSeek 兼容协议                  |
-| 提示词   | 可配置                  | **第一等公民**：词、句两套模板独立配置、独立切换，全变量化 |
-| 代码体量 | 大型                    | 有意保持小而可读                                           |
+| 维度     | zotero-pdf-translate    | Sense Lingo（本项目）                                            |
+| -------- | ----------------------- | ---------------------------------------------------------------- |
+| 定位     | 全场景翻译工具箱        | 单点做深：划词 + 语境                                            |
+| 输入单位 | 词 / 段 / 整篇 / 元数据 | 划选文本 **+ 所在句子**，且**按"词/句"分派不同提示词**           |
+| 服务商   | 20+，含传统翻译引擎     | 只做 LLM，主打 OpenAI / DeepSeek 兼容协议                        |
+| 提示词   | 可配置                  | **第一等公民**：词、句两套模板各占一个文本框，独立配置，全变量化 |
+| 代码体量 | 大型                    | 有意保持小而可读                                                 |
 
 我们复用的是它的**工程实践**而非代码：
 
@@ -170,9 +170,9 @@ profileId = (kind === "word") ? prefs.promptProfileWord
                               : prefs.promptProfileSentence
 ```
 
-- 两个键**完全独立**：改 `promptProfileWord` 不会影响划句行为，反之亦然；
+- 两个槽位**完全独立**：改划词模板不会影响划句行为，反之亦然；
 - 某个键指向不存在的模板时，回退到内置的 `word` / `sentence` 默认模板，并写一条 `warn` 日志，绝不静默失败；
-- `promptProfiles` 里每个模板的 `kind` 字段只用于设置页分组展示，**不参与路由**（避免"改了 kind 却不生效"的困惑）。
+- 设置页只为 `word` / `sentence` 两个槽位提供文本框，编辑的正是模板里的 `system` 字段。
 
 请求统一走 OpenAI 兼容协议：`POST {baseURL}/chat/completions`，`Authorization: Bearer {apiKey}`。DeepSeek 只是 `baseURL` 与 `model` 的预设差异（`https://api.deepseek.com/v1` + `deepseek-chat`），因此**一家客户端覆盖两家服务商**，第三方兼容网关同理。
 
@@ -212,7 +212,7 @@ npm run build
 3. 开启设置里的 **自动翻译** 后，选中文本即直接在划词弹窗内显示译文，无需任何点击；未开启时，点击弹窗中的 **翻译** 按钮同样在弹窗内显示译文；
 4. 弹窗里**只显示译文本身**，不占用右下角；划一个单词时会依次显示三行：**释义**、**美式音标**、**英式音标**（短语 / 缩写只有释义）；
 5. 需要更多信息时按快捷键 `Ctrl/⌘ + Shift + T`，会打开完整结果面板：**判定类型**（词 / 句）、**使用的模板名**、命中的原句、模型与耗时；
-6. 在结果面板中，判定不符合预期时可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；还可展开提示词临时改一版再试，满意后存为新模板。
+6. 在结果面板中，判定不符合预期时可一键在「词 / 句」间切换并立即重译——只影响本次，不写回设置；还可展开提示词临时改一版再试，满意后把内容粘贴回设置页对应的模板文本框。
 
 ### 同一句话，两种划法
 
@@ -251,9 +251,9 @@ npm run build
 | `useContext`               | boolean      | `true`        | **仅 `word` 模式**：是否带出所在句（关闭后等同词典式直译）                                                                 |
 | `sentenceContextNeighbors` | boolean      | `false`       | **仅 `sentence` 模式**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                           |
 | `maxSentenceChars`         | number       | `400`         | 单句上下文长度上限，超出则截断                                                                                             |
-| `promptProfileWord`        | string       | `word`        | **划词**时使用的提示词模板 id                                                                                              |
-| `promptProfileSentence`    | string       | `sentence`    | **划句**时使用的提示词模板 id                                                                                              |
-| `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合，词模板与句模板分别存放                                                                                     |
+| `promptProfileWord`        | string       | `word`        | 划词路由 id（内部键，设置页不暴露；指向失效 id 时回退内置 `word`）                                                         |
+| `promptProfileSentence`    | string       | `sentence`    | 划句路由 id（内部键，设置页不暴露；指向失效 id 时回退内置 `sentence`）                                                     |
+| `promptProfiles`           | string(JSON) | 见下          | 提示词模板集合；设置页的两个文本框对应 `word` / `sentence` 两个槽位的 `system` 字段                                        |
 | `showInPopup`              | boolean      | `true`        | 是否在划词弹窗注入翻译按钮                                                                                                 |
 | `autoTranslate`            | boolean      | `false`       | 选中文本后自动翻译，译文直接出现在划词弹窗内；开启后自动隐藏翻译按钮；与 `showInPopup` 相互独立，未配置 API Key 时静默跳过 |
 | `popupFontSize`            | number       | `12`          | 划词弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽，保持每行字数基本不变                                          |
@@ -273,53 +273,42 @@ npm run build
 
 ## 提示词自定义
 
-提示词按"模板集合"存储，**词模板与句模板分开管理**：划词走一套，划句走另一套，互不干扰。
+设置页的 **提示词模板** 区域有两个多行文本框：**划词 · 语境辨析** 与 **划句 · 通顺翻译**。每个文本框里是发给模型的 system 提示词，直接编辑即可，**换行会原样保留**（不需要写 `\n`）。划选的文本与上下文由插件自动附在 user 消息里，无需在模板中再手写一遍。
 
 ### 路由规则
 
-| 选区类型   | 判定条件（默认阈值）                    | 使用的配置键            | 默认模板 id |
-| ---------- | --------------------------------------- | ----------------------- | ----------- |
-| `word`     | 词数 ≤ 3、无句末标点、≤ 40 字符、未跨行 | `promptProfileWord`     | `word`      |
-| `sentence` | 其余情况                                | `promptProfileSentence` | `sentence`  |
+| 选区类型   | 判定条件（默认阈值）                    | 使用的文本框                  |
+| ---------- | --------------------------------------- | ----------------------------- |
+| `word`     | 词数 ≤ 3、无句末标点、≤ 40 字符、未跨行 | 划词 · 语境辨析（`word`）     |
+| `sentence` | 其余情况                                | 划句 · 通顺翻译（`sentence`） |
 
-- 两个键**完全独立**：只改 `promptProfileWord` 时，划句行为完全不变；反之亦然。
-- 想同时维护"论文精读"和"日常速览"两套风格？各准备一对词/句模板，然后同时切换 `promptProfileWord` 与 `promptProfileSentence`。
-- 键指向不存在的模板 id → 回退到内置的 `word` / `sentence` 模板，并写一条 `warn` 日志，不会静默失败。
+- 两个文本框**完全独立**：只改划词模板时，划句行为完全不变；反之亦然。
+- 文本框留空 → 自动恢复该槽位的内置默认模板，并在下方给出提示。
+- 两个槽位的 id 固定为 `word` / `sentence`；路由键 `promptProfileWord` / `promptProfileSentence` 仍保留以兼容旧配置，指向失效 id 时回退内置模板并写一条 `warn` 日志。
 
-### 默认存储结构
+### 存储结构
 
-`extensions.zotero.sense-lingo.promptProfiles` —— 词、句模板各两份示例：
+`extensions.zotero.sense-lingo.promptProfiles` 仍是 JSON 对象，但只保留两个槽位：
 
 ```json
 {
   "word": {
     "name": "划词 · 语境辨析",
     "kind": "word",
-    "system": "You are a precise bilingual lexicographer. Translate the selected text into {targetLang}, using the given sentence to disambiguate word sense. First line: contextual meaning (part of speech). For a single English word, add 美式音标：/.../ and 英式音标：/.../, each on its own line. Output plain text only.",
+    "system": "…设置页第一个文本框的内容…",
     "user": "Sentence: {sentence}\nSelected text: {text}"
-  },
-  "word-casual": {
-    "name": "划词 · 只要中文意思",
-    "kind": "word",
-    "system": "Translate into {targetLang}. Output the contextual meaning only, no explanation.",
-    "user": "{text}\n({sentence})"
   },
   "sentence": {
     "name": "划句 · 通顺翻译",
     "kind": "sentence",
-    "system": "You are a precise academic translator. Translate the text into {targetLang}. Output plain text only.",
+    "system": "…设置页第二个文本框的内容…",
     "user": "{text}"
-  },
-  "sentence-neighbor": {
-    "name": "划句 · 带前后句衔接",
-    "kind": "sentence",
-    "system": "You are a precise academic translator. Translate the text into {targetLang}, keeping coherence with the neighboring sentences. Output only the translation of the text.",
-    "user": "Previous: {prevSentence}\nText: {text}\nNext: {nextSentence}"
   }
 }
 ```
 
-`kind` 字段仅用于设置页分组展示，**不参与路由**——路由只看 `promptProfileWord` / `promptProfileSentence`。这样做是为了避免"把 kind 改了却不生效"这类困惑。
+- 设置页只编辑 `system`；`user` 是固定的传输信封（把 `{sentence}` / `{text}` 交给模型），不需要手改。
+- 两个文本框都与内置模板一致时，该 pref 存为空串，方便以后升级默认模板；一旦自定义才写入 JSON。
 
 ### 可用变量
 
@@ -342,8 +331,9 @@ npm run build
 
 ### 默认模板 A：划词（`word`）
 
+设置页第一个文本框（`system`）：
+
 ```text
-[system]
 You are a precise bilingual lexicographer.
 
 Translate the selected text into {targetLang}. You are given the sentence it
@@ -365,16 +355,20 @@ Rules:
    English word, output the meaning line only - no phonetic lines.
 4. Keep formulas, citation markers and proper nouns intact.
 5. Output plain text only: no Markdown, no bullet points, no extra commentary.
+```
 
-[user]
+插件自动附加的 user 消息（`user`，设置页不暴露）：
+
+```text
 Sentence: {sentence}
 Selected text: {text}
 ```
 
 ### 默认模板 B：划句（`sentence`）
 
+设置页第二个文本框（`system`）：
+
 ```text
-[system]
 You are a precise academic translator.
 
 Translate the text into {targetLang}. The text is already a complete sentence
@@ -386,8 +380,11 @@ Rules:
 2. Keep the original sentence order; do not merge or split sentences.
 3. Output plain text only, never Markdown headings or bullet lists.
 4. If the text is already in {targetLang}, output it unchanged.
+```
 
-[user]
+插件自动附加的 user 消息（`user`，设置页不暴露）：
+
+```text
 {text}
 ```
 
@@ -395,27 +392,24 @@ Rules:
 
 ### 自定义示例：划词"术语速查" + 划句"直译"
 
-把 `promptProfileWord` 指向 `term-lookup`：
+把下面这段粘到设置页的 **划词 · 语境辨析** 文本框（划选文本和所在句会自动附在 user 消息末尾，所以这里不用再写 `{text}` / `{sentence}`）：
 
 ```text
-句子：{sentence}
-选中：{text}
 目标语言：{targetLang}
 
 请给出：
-1) 该词在此句中的准确译法；
+1) 该词在上下文中的准确译法；
 2) 词性与常见搭配；
 3) 若为术语，给出该文献语境下的解释（不超过 20 字）。
 ```
 
-把 `promptProfileSentence` 指向 `literal`：
+把下面这段粘到 **划句 · 通顺翻译** 文本框：
 
 ```text
-把下面的文本直译为 {targetLang}，保留句序与术语，不要润色、不要解释：
-{text}
+把附带的文本直译为 {targetLang}，保留句序与术语，不要润色、不要解释。
 ```
 
-模板重置：设置页的"恢复默认提示词"只重写内置的 `word` 与 `sentence` 两份模板，**不会**动用户自建的模板，也不会修改 `promptProfileWord` / `promptProfileSentence` 当前的指向。
+模板重置：设置页的"恢复内置默认模板"会清空 `promptProfiles`，并把两个文本框都恢复为内置内容；只清空单个文本框时，保存后也只恢复该槽位并给出提示。
 
 ## 开发
 
@@ -494,12 +488,12 @@ npm run lint:check  # prettier --check + eslint
 │   │   ├── llm/
 │   │   │   ├── client.ts           # OpenAI 兼容客户端（超时/错误码归一）
 │   │   │   ├── providers.ts        # openai / deepseek / custom 预设
-│   │   │   ├── prompt.ts           # 模板集合、默认模板、路由与回退
+│   │   │   ├── prompt.ts           # 模板槽位、默认模板、路由与回退
 │   │   │   ├── format.ts           # 划词三行格式归一（释义 / 美式 / 英式）
 │   │   │   └── render.ts           # 变量渲染
 │   │   └── ui/
 │   │       ├── resultPanel.ts      # 阅读器内的译文面板
-│   │       └── preferences.ts      # 设置页逻辑与 JSON 校验
+│   │       └── preferences.ts      # 设置页逻辑与模板保存
 │   └── utils/
 │       └── prefs.ts  locale.ts  logger.ts
 ├── test/                           # vitest 单元测试

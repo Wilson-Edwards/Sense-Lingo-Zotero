@@ -3,7 +3,7 @@
  *
  * Values are read/written explicitly through `Zotero.Prefs` instead of relying
  * on `preference=` auto-binding: HTML inputs, XUL checkboxes and textareas have
- * subtly different binding rules, and the prompt profiles need validation
+ * subtly different binding rules, and the prompt templates need normalising
  * before they are stored.
  */
 
@@ -21,9 +21,10 @@ import {
   type ProviderId,
 } from "../llm/providers";
 import {
-  DEFAULT_PROFILES,
-  cloneProfiles,
+  buildProfiles,
+  isDefaultProfiles,
   parseProfiles,
+  readProfileTemplates,
   stringifyProfiles,
 } from "../llm/prompt";
 import { normalizePopupFontSize } from "../reader/popupFontSize";
@@ -37,8 +38,6 @@ const TEXT_KEYS = [
   "baseURL",
   "model",
   "temperature",
-  "promptProfileWord",
-  "promptProfileSentence",
 ] as const satisfies readonly PrefKey[];
 
 const NUMBER_KEYS = [
@@ -135,16 +134,8 @@ function syncFromPrefs(win: Window): void {
     );
   }
 
-  const textarea = byId<HTMLTextAreaElement>(win, "promptProfiles");
-  if (textarea) {
-    const raw = String(getPref("promptProfiles") ?? "").trim();
-    textarea.value = raw
-      ? stringifyProfiles(parseProfiles(raw))
-      : stringifyProfiles(cloneProfiles(DEFAULT_PROFILES));
-  }
-
+  syncPromptTemplates(win);
   updatePlaceholders(win);
-  updateProfileDatalist(win);
 }
 
 /** Show the preset values as placeholders so "blank = preset" is discoverable. */
@@ -203,62 +194,58 @@ function switchProvider(win: Window, next: ProviderId): void {
   writeProviderInputs(win, values);
 }
 
-function updateProfileDatalist(win: Window): void {
-  const list = byId<HTMLDataListElement>(win, "profile-list");
-  if (!list) {
-    return;
+/** Fill the two prompt textareas from the stored templates. */
+function syncPromptTemplates(win: Window): void {
+  const templates = readProfileTemplates(
+    parseProfiles(getPref("promptProfiles")),
+  );
+  const wordBox = byId<HTMLTextAreaElement>(win, "promptWord");
+  if (wordBox) {
+    wordBox.value = templates.word;
   }
-  list.textContent = "";
-  const profiles = parseProfiles(getPref("promptProfiles"));
-  for (const [id, profile] of Object.entries(profiles)) {
-    const option = win.document.createElementNS(
-      XHTML_NS,
-      "option",
-    ) as HTMLOptionElement;
-    option.value = id;
-    option.label = `${profile.name}${profile.kind ? ` (${profile.kind})` : ""}`;
-    list.appendChild(option);
+  const sentenceBox = byId<HTMLTextAreaElement>(win, "promptSentence");
+  if (sentenceBox) {
+    sentenceBox.value = templates.sentence;
   }
 }
 
-function setProfilesStatus(win: Window, message: string): void {
-  const status = byId<HTMLElement>(win, "profiles-status");
+function setPromptStatus(win: Window, message: string): void {
+  const status = byId<HTMLElement>(win, "prompt-status");
   if (status) {
     status.textContent = message;
   }
 }
 
-/** Validate the JSON before storing it: a broken pref breaks every translate. */
-function saveProfiles(win: Window): void {
-  const textarea = byId<HTMLTextAreaElement>(win, "promptProfiles");
-  if (!textarea) {
+/**
+ * Store both textareas.
+ *
+ * The pref stays empty while both templates match the built-ins, so a future
+ * release can still improve the defaults without overwriting untouched
+ * settings. A blank box is restored to its built-in prompt instead of being
+ * saved as an empty system message, which every model would ignore.
+ */
+function savePromptTemplates(win: Window): void {
+  const wordBox = byId<HTMLTextAreaElement>(win, "promptWord");
+  const sentenceBox = byId<HTMLTextAreaElement>(win, "promptSentence");
+  if (!wordBox || !sentenceBox) {
     return;
   }
-  const raw = textarea.value.trim();
-  if (!raw) {
-    setPref("promptProfiles", "");
-    setProfilesStatus(win, "");
-    updateProfileDatalist(win);
-    return;
+  const blank = !wordBox.value.trim() || !sentenceBox.value.trim();
+  const profiles = buildProfiles(
+    { word: wordBox.value, sentence: sentenceBox.value },
+    parseProfiles(getPref("promptProfiles")),
+  );
+  setPref(
+    "promptProfiles",
+    isDefaultProfiles(profiles) ? "" : stringifyProfiles(profiles),
+  );
+  if (blank) {
+    // Show the restored prompt so a cleared box cannot look saved-as-empty.
+    syncPromptTemplates(win);
+    setPromptStatus(win, getString("pref-profile-empty-reset"));
+  } else {
+    setPromptStatus(win, "");
   }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      setProfilesStatus(win, getString("pref-profiles-invalid"));
-      return;
-    }
-  } catch (e) {
-    setProfilesStatus(
-      win,
-      getString("pref-profiles-invalid-json", {
-        detail: (e as Error)?.message ?? "",
-      }),
-    );
-    return;
-  }
-  setPref("promptProfiles", raw);
-  setProfilesStatus(win, "");
-  updateProfileDatalist(win);
 }
 
 const bound = new WeakSet<Window>();
@@ -304,17 +291,16 @@ function bindEvents(win: Window): void {
     setPref("popupFontSize", size);
   });
 
-  const textarea = byId<HTMLTextAreaElement>(win, "promptProfiles");
-  textarea?.addEventListener("change", () => saveProfiles(win));
+  for (const key of ["promptWord", "promptSentence"] as const) {
+    const textarea = byId<HTMLTextAreaElement>(win, key);
+    textarea?.addEventListener("change", () => savePromptTemplates(win));
+  }
 
   const resetBtn = byId<HTMLButtonElement>(win, "reset-profiles");
   resetBtn?.addEventListener("click", () => {
-    if (textarea) {
-      textarea.value = stringifyProfiles(cloneProfiles(DEFAULT_PROFILES));
-    }
     setPref("promptProfiles", "");
-    setProfilesStatus(win, "");
-    updateProfileDatalist(win);
+    syncPromptTemplates(win);
+    setPromptStatus(win, "");
   });
 }
 

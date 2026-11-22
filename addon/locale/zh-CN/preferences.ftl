@@ -16,18 +16,18 @@ pref-kind-word = 一律按"词"
 pref-kind-sentence = 一律按"句"
 pref-word-max-words = 判为"词"的最大词数
 pref-word-max-chars = 最大字符数
-pref-profile-word = 划词模板 id
-pref-profile-sentence = 划句模板 id
 
 pref-head-context = 上下文
 pref-use-context = 划词时带出所在句子（关闭后为纯词义翻译）
 pref-context-neighbors = 划句时带出前后各一句
 pref-max-sentence-chars = 单句上下文长度上限
 
-pref-head-prompts = 提示词模板（JSON）
+pref-head-prompts = 提示词模板
+pref-prompt-hint = 直接编辑系统提示词，换行会原样保留；支持 {"{"}text{"}"}、{"{"}sentence{"}"}、{"{"}targetLang{"}"} 等变量。划选的文本会自动附在消息末尾，留空则使用内置模板。
+pref-word-template = 划词 · 语境辨析
+pref-sentence-template = 划句 · 通顺翻译
 pref-reset-profiles = 恢复内置默认模板
-pref-profiles-invalid = 模板必须是一个 JSON 对象（对象的值需包含 system 与 user 字段）
-pref-profiles-invalid-json = JSON 解析失败：{ $detail }
+pref-profile-empty-reset = 模板为空，已恢复内置默认模板
 
 pref-head-ui = 界面与高级
 pref-show-in-popup = 在划词弹窗中显示翻译按钮
