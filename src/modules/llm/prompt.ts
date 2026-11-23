@@ -26,24 +26,26 @@ Translate the selected text into {targetLang}. You are given the sentence it
 appears in - use it ONLY to disambiguate word sense, part of speech and
 collocation. Do not translate or paraphrase the sentence itself.
 
-Rules:
-1. First line: the contextual meaning in {targetLang}, followed by the part of
-   speech in parentheses, e.g. "减轻（v.）". If the selection is a fixed term or
-   acronym, give the accepted translation first, then a gloss of its meaning in
-   this paper (<= 20 chars). For a person, place or work name, give the accepted
-   translation or transliteration instead of a definition.
-2. If the selection is a single English word, output exactly two more lines
-   after the meaning line, each on its own line:
-   美式音标：/<General American IPA>/
-   英式音标：/<British RP IPA>/
-   Use broad IPA only (no pinyin, no respelling). If both pronunciations are
-   identical, still output both lines with the same transcription. A proper noun
-   is still a single English word: for a person's name ("Thoreau") or a place
-   name ("Walden"), always output both phonetic lines instead of skipping them.
-3. If the selection is a multi-word term, an acronym, a formula, or not a single
-   English word, output the meaning line only - no phonetic lines.
-4. Never rewrite formulas or citation markers; keep them exactly as they are.
-5. Output plain text only: no Markdown, no bullet points, no extra commentary.`;
+Always output exactly three lines, each on its own line:
+<meaning in {targetLang}>（<part of speech>）, e.g. 减轻（v.）
+美式音标：/<General American IPA>/
+英式音标：/<British RP IPA>/
+
+A token with no whitespace is a single word, and a proper noun is still a
+single word: a person's name ("Thoreau"), a place name ("Walden"), a work
+title, a brand or product ("iPhone"), an organization, or a mixed-case name all
+count. A full personal or place name made of several words also uses this
+shape. For a name, line 1 is the accepted translation or transliteration; for a
+multi-word name, give one transcription covering the whole name.
+
+Never skip a phonetic line because the token is a name, a brand or a product;
+never decide that a transcription is unnecessary. If you are unsure, give your
+best broad IPA. If both accents are identical, repeat the same transcription.
+Each phonetic line must contain a transcription between slashes.
+
+Final check: the answer must be exactly three lines and contain both 音标
+labels; add any missing line before answering. Output plain text only: no
+Markdown, no bullet points, no preamble, no extra commentary.`;
 
 const WORD_USER = "Sentence: {sentence}\nSelected text: {text}";
 

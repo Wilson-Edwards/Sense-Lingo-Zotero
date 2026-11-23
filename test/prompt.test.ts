@@ -283,17 +283,20 @@ describe("default word profile", () => {
     expect(system).not.toMatch(/no pronunciation/i);
   });
 
-  it("keeps phonetics for single-word proper nouns", () => {
+  it("keeps phonetics for single-word proper nouns and brand names", () => {
     const system = DEFAULT_PROFILES[WORD_PROFILE_ID].system;
     expect(system).toContain("proper noun");
     expect(system).toContain("Thoreau");
     expect(system).toContain("Walden");
+    expect(system).toContain("iPhone");
     expect(system).toContain("person's name");
+    expect(system).toContain("Never skip");
+    expect(system).not.toContain("Shape");
   });
 
   it("renders a proper-noun lookup with its sentence context", () => {
     const properContext = resolveSentence(
-      "In Walden, Thoreau famously writes about simplicity.",
+      "In Walden, Thoreau famously writes",
       "Thoreau",
     );
     const rendered = renderPromptFor({
@@ -305,6 +308,17 @@ describe("default word profile", () => {
     expect(rendered.system).toContain("proper noun");
     expect(rendered.user).toContain("In Walden, Thoreau famously writes");
     expect(rendered.user).toContain("Selected text: Thoreau");
+  });
+
+  it("renders a brand-name lookup as a shape A request", () => {
+    const rendered = renderPromptFor({
+      ...base,
+      text: "iPhone",
+      kind: "word",
+    });
+    expect(rendered.system).toContain('brand or product ("iPhone")');
+    expect(rendered.system).toContain("exactly three lines");
+    expect(rendered.user).toContain("Selected text: iPhone");
   });
 
   it("renders the request into the word system prompt", () => {
