@@ -58,20 +58,20 @@ for changing it._
 
 ## Features
 
-| Capability                     | What it does                                                                                                                        |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 🔤 Word / sentence translation | Select text in the Zotero PDF / EPUB reader; the translation appears inside the native selection popup, translation only.           |
-| 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                     |
-| 🗣 US / UK IPA                  | Single words always return three lines: **meaning** / **US IPA** / **UK IPA**; phrases, acronyms and formulas get the meaning only. |
-| 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                          |
-| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).    |
-| ✍️ Fully editable prompts      | Two multiline boxes in settings, line breaks preserved; variables like `{text}`, `{sentence}`, `{targetLang}`.                      |
-| 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                   |
-| ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.     |
-| 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                     |
-| 🌊 Streaming                   | On by default; the translation appears while it is generated. Can be turned off; falls back automatically with idle-based timeout.  |
-| 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                   |
-| 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                             |
+| Capability                     | What it does                                                                                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔤 Word / sentence translation | Select text in the Zotero PDF / EPUB reader; the translation appears inside the native selection popup, translation only.                                                    |
+| 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                                                              |
+| 🗣 US / UK IPA                  | Single words, person/place names included, always return three lines: **meaning** / **US IPA** / **UK IPA**; multi-word phrases, acronyms and formulas get the meaning only. |
+| 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                                                                   |
+| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).                                             |
+| ✍️ Fully editable prompts      | Two multiline boxes in settings, line breaks preserved; variables like `{text}`, `{sentence}`, `{targetLang}`.                                                               |
+| 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                                                            |
+| ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.                                              |
+| 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                                                              |
+| 🌊 Streaming                   | On by default; the translation appears while it is generated. Can be turned off; falls back automatically with idle-based timeout.                                           |
+| 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                                                            |
+| 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                                                                      |
 
 ## Quick start
 
@@ -131,9 +131,9 @@ If no API key is configured yet, the popup tells you to fill it in under Setting
 
 - The popup gets a **Translate** button; the result appears inline, **translation only** — no extra
   panel in the corner.
-- A single word returns exactly three lines: **meaning (with part of speech)**, **US IPA**,
-  **UK IPA**. Phrases, acronyms and formulas return the meaning only. If a model glues the labels
-  onto one line, they are split before display.
+- A single word (person and place names included) returns exactly three lines: **meaning (with
+  part of speech)**, **US IPA**, **UK IPA**. Multi-word phrases, acronyms and formulas return the
+  meaning only. If a model glues the labels onto one line, they are split before display.
 - With **auto-translate** enabled, selecting text translates immediately and the button is hidden.
   When no API key is configured it stays silent instead of popping an error on every selection.
 - Popup font size is configurable (8–32 px); the popup widens proportionally so the number of

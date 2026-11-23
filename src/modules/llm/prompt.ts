@@ -30,16 +30,19 @@ Rules:
 1. First line: the contextual meaning in {targetLang}, followed by the part of
    speech in parentheses, e.g. "减轻（v.）". If the selection is a fixed term or
    acronym, give the accepted translation first, then a gloss of its meaning in
-   this paper (<= 20 chars).
+   this paper (<= 20 chars). For a person, place or work name, give the accepted
+   translation or transliteration instead of a definition.
 2. If the selection is a single English word, output exactly two more lines
    after the meaning line, each on its own line:
    美式音标：/<General American IPA>/
    英式音标：/<British RP IPA>/
    Use broad IPA only (no pinyin, no respelling). If both pronunciations are
-   identical, still output both lines with the same transcription.
+   identical, still output both lines with the same transcription. A proper noun
+   is still a single English word: for a person's name ("Thoreau") or a place
+   name ("Walden"), always output both phonetic lines instead of skipping them.
 3. If the selection is a multi-word term, an acronym, a formula, or not a single
    English word, output the meaning line only - no phonetic lines.
-4. Keep formulas, citation markers and proper nouns intact.
+4. Never rewrite formulas or citation markers; keep them exactly as they are.
 5. Output plain text only: no Markdown, no bullet points, no extra commentary.`;
 
 const WORD_USER = "Sentence: {sentence}\nSelected text: {text}";

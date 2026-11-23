@@ -283,6 +283,30 @@ describe("default word profile", () => {
     expect(system).not.toMatch(/no pronunciation/i);
   });
 
+  it("keeps phonetics for single-word proper nouns", () => {
+    const system = DEFAULT_PROFILES[WORD_PROFILE_ID].system;
+    expect(system).toContain("proper noun");
+    expect(system).toContain("Thoreau");
+    expect(system).toContain("Walden");
+    expect(system).toContain("person's name");
+  });
+
+  it("renders a proper-noun lookup with its sentence context", () => {
+    const properContext = resolveSentence(
+      "In Walden, Thoreau famously writes about simplicity.",
+      "Thoreau",
+    );
+    const rendered = renderPromptFor({
+      ...base,
+      text: "Thoreau",
+      context: properContext,
+      kind: "word",
+    });
+    expect(rendered.system).toContain("proper noun");
+    expect(rendered.user).toContain("In Walden, Thoreau famously writes");
+    expect(rendered.user).toContain("Selected text: Thoreau");
+  });
+
   it("renders the request into the word system prompt", () => {
     const rendered = renderPromptFor({ ...base, kind: "word" });
     expect(rendered.system).toContain("美式音标：");
