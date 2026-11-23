@@ -52,28 +52,35 @@ cp .env.example .env
 
 ## 测试
 
-`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，11 个文件、147 个用例：
+`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，13 个文件、168 个用例：
 
-| 测试文件                      | 用例 | 覆盖内容                                                   |
-| ----------------------------- | ---- | ---------------------------------------------------------- |
-| `sentence.test.ts`            | 28   | 分句、缩写、断词、空白不敏感匹配、指纹消歧、前后句、截断   |
-| `prompt.test.ts`              | 30   | 模板解析、路由、回退、默认模板判定、变量渲染               |
-| `selectionKind.test.ts`       | 19   | 1/3/4 词边界、标点、缩写、跨行、中英混排、纯数字、强制模式 |
-| `chatCompletion.test.ts`      | 12   | 请求构造、地址归一、响应解析、错误归一、服务商预设         |
-| `chatStream.test.ts`          | 9    | SSE 增量解析、跨包拼接、`[DONE]`、JSON 回退、流内错误      |
-| `client.test.ts`              | 12   | 端点拼接、响应 / 流式分片解析                              |
-| `popupTranslation.test.ts`    | 10   | 请求共享、60 秒缓存、失败不缓存                            |
-| `popupFontSize.test.ts`       | 9    | 字号钳制、弹窗宽度                                         |
-| `providerCredentials.test.ts` | 8    | 服务商配置的存取与切换隔离                                 |
-| `format.test.ts`              | 6    | 音标标签拆行                                               |
-| `selectionAnchor.test.ts`     | 4    | 锚点块文本与指纹提取                                       |
+| 测试文件                      | 用例 | 覆盖内容                                                                |
+| ----------------------------- | ---- | ----------------------------------------------------------------------- |
+| `sentence.test.ts`            | 28   | 分句、缩写、断词、空白不敏感匹配、指纹消歧、前后句、截断                |
+| `prompt.test.ts`              | 33   | 模板解析、路由、回退、默认模板判定、变量渲染                            |
+| `selectionKind.test.ts`       | 19   | 1/3/4 词边界、标点、缩写、跨行、中英混排、纯数字、强制模式              |
+| `chatCompletion.test.ts`      | 12   | 请求构造、地址归一、响应解析、错误归一、服务商预设                      |
+| `chatStream.test.ts`          | 14   | SSE 增量解析、跨包拼接、`[DONE]`、JSON 回退、流内错误、不可读 body 降级 |
+| `client.test.ts`              | 12   | 端点拼接、响应 / 流式分片解析                                           |
+| `llmRuntime.test.ts`          | 7    | `fetch` / `AbortController` / `TextDecoder` 的作用域选择                |
+| `popupTranslation.test.ts`    | 10   | 请求共享、60 秒缓存、失败不缓存                                         |
+| `popupStream.test.ts`         | 6    | 弹窗重渲染时的增量回放、脱离 DOM 的槽位回收                             |
+| `popupFontSize.test.ts`       | 9    | 字号钳制、弹窗宽度                                                      |
+| `providerCredentials.test.ts` | 8    | 服务商配置的存取与切换隔离                                              |
+| `format.test.ts`              | 6    | 音标标签拆行                                                            |
+| `selectionAnchor.test.ts`     | 4    | 锚点块文本与指纹提取                                                    |
 
 不适合单测的部分（真实阅读器 UI、端到端）靠人工回归：
 
-| 层             | 方式 | 检查点                                                 |
-| -------------- | ---- | ------------------------------------------------------ |
-| Zotero UI 注入 | 手工 | 弹窗按钮出现、译文内联、字号生效、弹窗重渲染不重复请求 |
-| 端到端         | 手工 | 真实 API Key 下分别跑「划词」「划句」以及 EPUB 的一节  |
+| 层             | 方式 | 检查点                                                        |
+| -------------- | ---- | ------------------------------------------------------------- |
+| Zotero UI 注入 | 手工 | 弹窗按钮出现、译文内联、字号生效、弹窗重渲染不重复请求        |
+| 流式显示       | 手工 | 弹窗 / 结果面板逐字增长；弹窗重渲染后仍继续增长而不是跳到全文 |
+| 端到端         | 手工 | 真实 API Key 下分别跑「划词」「划句」以及 EPUB 的一节         |
+
+流式相关的问题可以先用调试日志定位：打开「设置 → 界面与高级 → 调试日志」后，每次请求会打印
+`request <provider> <model> stream|buffered via <scope>` 与 `stream finished N chunk(s), M char(s)`；
+如果出现 `WARN streaming unavailable`，说明拿到的是不可读的响应体，问题在传输层而不是 UI。
 
 ## 项目结构
 

@@ -180,6 +180,11 @@ Content-Type: application/json
 - 地址归一：去掉末尾斜杠；只写了主机名时补 `/v1`；已经以 `/chat/completions` 结尾则不再重复拼接。
 - `stream` 由设置页的「流式输出」控制：开启后请求带 `"stream": true`，按 SSE 逐段读取
   `data: {...}`，`[DONE]` 结束；服务商忽略该参数、直接返回普通 JSON 时自动回退为一次性解析。
+- 请求使用的 `fetch` / `AbortController` / `TextDecoder` 从同一个 Zotero 作用域解析（优先主窗口）：
+  插件沙箱里没有 `AbortController`（超时会静默失效），而且部分 Zotero 构建里拿到的 `Response`
+  没有可读的 body（流式会退化成“等全部返回再显示”）。三个 API 必须来自同一个 realm，否则跨 realm
+  的 `AbortSignal` 会被拒绝。响应体确实读不到时，会在 Zotero 调试输出里留一条
+  `WARN streaming unavailable`，便于区分是服务端没有流式返回还是 Zotero 这一层读不到 body。
 - 超时用 `AbortController` 实现，默认 30 秒，可在设置里改。流式模式下每收到一段数据就重置计时，
   即超时衡量的是**空闲时间**，避免长译文被总时长误伤。
 - 响应兼容 `content` 为字符串或分段数组两种形态；空 `choices` 会被判为错误而不是显示空白。

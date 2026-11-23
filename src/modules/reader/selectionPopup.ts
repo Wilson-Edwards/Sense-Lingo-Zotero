@@ -26,6 +26,12 @@ import {
   popupMaxWidth,
 } from "./popupFontSize";
 import { peekPopupTranslation, translateInPopup } from "./popupTranslation";
+import {
+  clearPartial,
+  forEachLiveSlot,
+  rememberPartial,
+  trackSlot,
+} from "./popupStream";
 import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
@@ -277,6 +283,14 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
     anchor.fingerprint?.after ?? "",
   ].join("\u0000");
 
+  // Zotero can render the popup again for the same selection, and every render
+  // builds new DOM. Register this slot so a running request keeps painting into
+  // whichever slot is actually on screen.
+  const replayed = trackSlot(doc, cacheKey, slot);
+  if (replayed) {
+    showInlinePartial(slot, replayed);
+  }
+
   let button: HTMLButtonElement | null = null;
   let running = false;
 
@@ -285,15 +299,18 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
       return;
     }
     running = true;
-    showLoading(slot);
+    // A re-rendered popup may already show text replayed from the running
+    // request; never replace it with the placeholder.
+    if (!slot.textContent) {
+      showLoading(slot);
+    }
     void promise
       .then((result) => {
         // Closing the popup while the request is in flight leaves nowhere to
         // render; dropping the result is the intended inline-only behaviour.
-        if (!slot.isConnected) {
-          return;
-        }
-        showInlineResult(slot, result);
+        forEachLiveSlot(doc, cacheKey, (live) =>
+          showInlineResult(live, result),
+        );
         // A shown translation replaces the button; a failure brings it back.
         if (button) {
           button.style.display = result.ok ? "none" : "";
@@ -303,12 +320,13 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
         }
       })
       .catch(() => {
-        if (!slot.isConnected) {
-          return;
-        }
-        slot.style.display = "block";
-        slot.style.color = "#b42318";
-        slot.textContent = getString("error-generic");
+        const failed: InlineTranslation = {
+          ok: false,
+          message: getString("error-generic"),
+        };
+        forEachLiveSlot(doc, cacheKey, (live) =>
+          showInlineResult(live, failed),
+        );
         running = false;
         if (button) {
           button.style.display = "";
@@ -317,11 +335,19 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   };
 
   const run = (): void => {
+    // An in-flight request already owns the partial text; only a genuinely new
+    // request resets it.
+    if (!peekPopupTranslation(doc, cacheKey)) {
+      clearPartial(doc, cacheKey);
+    }
     apply(
       translateInPopup(doc, cacheKey, () =>
-        translateInline(target, text, (partial) =>
-          showInlinePartial(slot, partial),
-        ),
+        translateInline(target, text, (partial) => {
+          rememberPartial(doc, cacheKey, partial);
+          forEachLiveSlot(doc, cacheKey, (live) =>
+            showInlinePartial(live, partial),
+          );
+        }),
       ),
     );
   };

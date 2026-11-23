@@ -6,7 +6,9 @@
  * `POST {base}/chat/completions` protocol.
  */
 
+import { log, warn } from "../../utils/logger";
 import type { EffectiveProviderConfig } from "./providers";
+import { resolveWebApis, type ResolvedWebApis } from "./runtime";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -130,6 +132,9 @@ export function parseStreamChunk(payload: unknown): {
 
 interface StreamAccumulator {
   content: string;
+  /** Every decoded byte, kept so a non-SSE body can still be parsed. */
+  raw: string;
+  chunks: number;
   model?: string;
   done: boolean;
 }
@@ -182,7 +187,7 @@ function consumeStreamLine(
 }
 
 /**
- * Consume a `text/event-stream` response body.
+ * Consume a readable response body.
  *
  * `onActivity` fires on every received chunk so the caller can implement an
  * inactivity timeout: a long translation may legitimately take longer than one
@@ -192,10 +197,15 @@ async function readEventStream(
   body: ReadableStream,
   onDelta: ((delta: string) => void) | undefined,
   onActivity: () => void,
+  decoder: TextDecoder,
 ): Promise<StreamAccumulator> {
-  const state: StreamAccumulator = { content: "", done: false };
+  const state: StreamAccumulator = {
+    content: "",
+    raw: "",
+    chunks: 0,
+    done: false,
+  };
   const reader = body.getReader() as ReadableStreamDefaultReader;
-  const decoder = new TextDecoder();
   let buffer = "";
   try {
     while (!state.done) {
@@ -204,7 +214,10 @@ async function readEventStream(
         break;
       }
       onActivity();
-      buffer += decoder.decode(value as Uint8Array, { stream: true });
+      const text = decoder.decode(value as Uint8Array, { stream: true });
+      state.chunks += 1;
+      state.raw += text;
+      buffer += text;
       let newline = buffer.indexOf("\n");
       while (newline >= 0) {
         const line = buffer.slice(0, newline);
@@ -237,7 +250,12 @@ function parseEventStreamText(
   text: string,
   onDelta?: (delta: string) => void,
 ): StreamAccumulator {
-  const state: StreamAccumulator = { content: "", done: false };
+  const state: StreamAccumulator = {
+    content: "",
+    raw: text,
+    chunks: 1,
+    done: false,
+  };
   for (const line of text.split("\n")) {
     if (state.done) {
       break;
@@ -247,27 +265,86 @@ function parseEventStreamText(
   return state;
 }
 
+function contentTypeOf(response: Response): string {
+  try {
+    return response.headers?.get?.("content-type") ?? "";
+  } catch {
+    // Headers of a response created in another realm may not be readable.
+    return "";
+  }
+}
+
+/**
+ * The streaming body, when this realm can actually read it.
+ *
+ * Some Zotero scopes hand back a `Response` whose `body` is missing or throws
+ * on access even though the server streamed it; the request then has to be
+ * read as one buffered string, which is why the caller warns about it.
+ */
+function readableBody(response: Response): ReadableStream | null {
+  try {
+    const body = response.body as unknown as ReadableStream | null;
+    if (
+      body &&
+      typeof (body as { getReader?: unknown }).getReader === "function"
+    ) {
+      return body;
+    }
+  } catch {
+    // Reading `body` can throw across compartments (e.g. in the plugin sandbox).
+  }
+  return null;
+}
+
 /**
  * Read a response that was requested with `stream: true`.
  *
  * Most OpenAI-compatible providers answer with `text/event-stream`, but some
  * gateways ignore the flag and return a single JSON body; both are accepted so
- * flipping the setting cannot break a working provider.
+ * flipping the setting cannot break a working provider. A body is read
+ * incrementally unless the provider declared JSON, so a gateway that labels an
+ * event stream as `text/plain` still streams instead of buffering.
  */
 async function readStreamedResponse(
   response: Response,
   onDelta: ((delta: string) => void) | undefined,
   onActivity: () => void,
+  apis: ResolvedWebApis | null,
 ): Promise<{ content: string; model?: string }> {
-  const contentType = response.headers?.get?.("content-type") ?? "";
-  const body = response.body;
-  if (
-    contentType.includes("text/event-stream") &&
-    body &&
-    typeof body.getReader === "function"
-  ) {
-    const state = await readEventStream(body, onDelta, onActivity);
-    return { content: state.content, model: state.model };
+  const contentType = contentTypeOf(response);
+  const body = readableBody(response);
+
+  if (!body) {
+    warn(
+      "streaming unavailable: response has no readable body, waiting for the full answer",
+    );
+  }
+
+  if (body && !contentType.includes("json")) {
+    const state = await readEventStream(
+      body,
+      onDelta,
+      onActivity,
+      apis?.createTextDecoder() ?? new TextDecoder(),
+    );
+    log(
+      "stream finished",
+      `${state.chunks} chunk(s),`,
+      `${state.content.length} char(s)`,
+    );
+    if (state.content) {
+      return { content: state.content, model: state.model };
+    }
+    // The body was readable but carried no `data:` payload: an unusual
+    // content-type must not lose a normal JSON answer.
+    const raw = state.raw.trim();
+    return raw.startsWith("{")
+      ? parseChatCompletion(parseJsonBody(raw))
+      : { content: "" };
+  }
+
+  if (contentType.includes("json")) {
+    log("provider ignored stream, reading a JSON response");
   }
 
   const text = await response.text();
@@ -277,15 +354,7 @@ async function readStreamedResponse(
   }
   if (!text.trimStart().startsWith("data:")) {
     // Not an event stream at all: parse it as a regular completion.
-    let payload: unknown;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      throw new LlmError("PARSE", "Response is not valid JSON", {
-        detail: text.slice(0, 200),
-      });
-    }
-    return parseChatCompletion(payload);
+    return parseChatCompletion(parseJsonBody(text));
   }
   const state = parseEventStreamText(text, onDelta);
   return { content: state.content, model: state.model };
@@ -336,14 +405,25 @@ export async function chatCompletion(
   if (!config.apiKey || !endpoint || !config.model) {
     throw new LlmError("NOT_CONFIGURED", "Missing API key, base URL or model");
   }
-  const doFetch = options.fetchImpl ?? globalThis.fetch;
+  /**
+   * Prefer a real window scope. The plugin sandbox exposes `fetch` but no
+   * `AbortController` (so `requestTimeoutMs` silently did nothing), and on
+   * some builds its `Response` has no readable body, which turns streaming
+   * into one buffered answer. Tests inject `fetchImpl` and keep the ambient
+   * APIs instead.
+   */
+  const apis = options.fetchImpl ? null : resolveWebApis();
+  const doFetch = options.fetchImpl ?? apis?.fetch ?? globalThis.fetch;
   if (typeof doFetch !== "function") {
     throw new LlmError("NETWORK", "fetch is not available in this environment");
   }
 
   const timeoutMs = options.timeoutMs ?? config.timeoutMs;
-  const controller =
-    typeof AbortController === "function" ? new AbortController() : null;
+  const controller = apis
+    ? apis.createAbortController()
+    : typeof AbortController === "function"
+      ? new AbortController()
+      : null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   /**
    * With streaming, a response can legitimately stay open longer than one
@@ -363,6 +443,14 @@ export async function chatCompletion(
 
   const startedAt = Date.now();
   try {
+    log(
+      "request",
+      config.provider,
+      config.model,
+      config.stream ? "stream" : "buffered",
+      `via ${apis?.label ?? "injected fetch"}`,
+      controller ? "" : "(no timeout)",
+    );
     const response = await doFetch(endpoint, {
       method: "POST",
       headers: {
@@ -395,7 +483,7 @@ export async function chatCompletion(
     }
 
     const parsed = config.stream
-      ? await readStreamedResponse(response, options.onDelta, armTimeout)
+      ? await readStreamedResponse(response, options.onDelta, armTimeout, apis)
       : parseChatCompletion(parseJsonBody(await response.text()));
     const content = parsed.content.trim();
     if (!content) {

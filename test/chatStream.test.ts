@@ -227,4 +227,126 @@ describe("chatCompletion streaming", () => {
     ];
     expect(JSON.parse(String(init.body)).stream).toBe(false);
   });
+
+  it("buffers a body declared as JSON even when it is readable", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            model: "gpt-4o-mini",
+            choices: [{ message: { content: "整体译文" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onDelta: (d) => deltas.push(d),
+    });
+
+    expect(deltas).toEqual([]);
+    expect(result.content).toBe("整体译文");
+  });
+
+  it("streams a body labelled text/plain", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = vi.fn(async () =>
+      streamResponse(
+        [delta("减"), delta("轻"), "data: [DONE]\n\n"],
+        "text/plain",
+      ),
+    );
+
+    const result = await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onDelta: (d) => deltas.push(d),
+    });
+
+    expect(deltas).toEqual(["减", "轻"]);
+    expect(result.content).toBe("减轻");
+  });
+
+  it("parses a JSON answer that arrives on a readable body", async () => {
+    const deltas: string[] = [];
+    const payload = JSON.stringify({
+      model: "gpt-4o-mini",
+      choices: [{ message: { content: "整体译文" } }],
+    });
+    const fetchImpl = vi.fn(async () =>
+      streamResponse([payload], "text/plain"),
+    );
+
+    const result = await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onDelta: (d) => deltas.push(d),
+    });
+
+    expect(deltas).toEqual([]);
+    expect(result.content).toBe("整体译文");
+  });
+
+  it("buffers when the response body cannot be read across realms", async () => {
+    const deltas: string[] = [];
+    const payload = JSON.stringify({
+      model: "gpt-4o-mini",
+      choices: [{ message: { content: "整体译文" } }],
+    });
+    // Mirrors the plugin sandbox: the body getter throws on cross-compartment
+    // access, so only `text()` is usable and streaming degrades silently.
+    const fetchImpl = vi.fn(async () => {
+      const response = {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+        get body(): ReadableStream | null {
+          throw new Error("Permission denied to access property");
+        },
+        text: async () => payload,
+      };
+      return response as unknown as Response;
+    });
+
+    const result = await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onDelta: (d) => deltas.push(d),
+    });
+
+    expect(deltas).toEqual([]);
+    expect(result.content).toBe("整体译文");
+  });
+
+  it("reads an event stream that arrives without a readable body", async () => {
+    const deltas: string[] = [];
+    const text = delta("a") + delta("b") + "data: [DONE]\n\n";
+    const fetchImpl = vi.fn(async () => {
+      const response = {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+        body: null,
+        text: async () => text,
+      };
+      return response as unknown as Response;
+    });
+
+    const result = await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onDelta: (d) => deltas.push(d),
+    });
+
+    expect(deltas).toEqual(["a", "b"]);
+    expect(result.content).toBe("ab");
+  });
 });

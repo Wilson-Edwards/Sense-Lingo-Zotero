@@ -9,7 +9,7 @@
   <img alt="Zotero 7" src="https://img.shields.io/badge/Zotero-7-CC2936?style=flat-square&logo=zotero" />
   <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" />
   <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
-  <img alt="Tests 147 passing" src="https://img.shields.io/badge/tests-147%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests 168 passing" src="https://img.shields.io/badge/tests-168%20passing-brightgreen?style=flat-square" />
 </p>
 
 <!-- 发布前建议补一张演示 GIF：放到 docs/images/demo.gif，然后在这里插入
@@ -317,7 +317,7 @@ npm install
 | -------------------- | ---------------------------------------------------- |
 | `npm start`          | 启动开发实例（先按 `.env.example` 配置 Zotero 路径） |
 | `npm run build`      | 打包 + 类型检查，产出 `sense-lingo.xpi`              |
-| `npm test`           | Vitest 单元测试（11 个文件 / 147 个用例）            |
+| `npm test`           | Vitest 单元测试（13 个文件 / 168 个用例）            |
 | `npm run typecheck`  | `tsc --noEmit`                                       |
 | `npm run lint:check` | Prettier + ESLint                                    |
 

@@ -10,7 +10,7 @@
   <img alt="Zotero 7" src="https://img.shields.io/badge/Zotero-7-CC2936?style=flat-square&logo=zotero" />
   <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" />
   <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
-  <img alt="Tests 147 passing" src="https://img.shields.io/badge/tests-147%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests 168 passing" src="https://img.shields.io/badge/tests-168%20passing-brightgreen?style=flat-square" />
 </p>
 
 <!-- Before publishing, add a demo GIF: docs/images/demo.gif
@@ -354,7 +354,7 @@ npm install
 | -------------------- | --------------------------------------------------------------- |
 | `npm start`          | Start a dev instance (configure Zotero path via `.env.example`) |
 | `npm run build`      | Build + type-check, producing `sense-lingo.xpi`                 |
-| `npm test`           | Vitest unit tests (11 files / 147 cases)                        |
+| `npm test`           | Vitest unit tests (13 files / 168 cases)                        |
 | `npm run typecheck`  | `tsc --noEmit`                                                  |
 | `npm run lint:check` | Prettier + ESLint                                               |
 
