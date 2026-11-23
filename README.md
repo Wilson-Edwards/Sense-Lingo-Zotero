@@ -58,20 +58,20 @@ for changing it._
 
 ## Features
 
-| Capability                     | What it does                                                                                                                       |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| 🔤 Word / sentence translation | Select text in the Zotero PDF / EPUB reader; the translation appears inside the native selection popup, translation only.          |
-| 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                    |
-| 🗣 US / UK IPA                  | The word prompt always returns three lines: **meaning** / **US IPA** / **UK IPA**, including people, places, brands and products.  |
-| 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                         |
-| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).   |
-| ✍️ Fully editable prompts      | Two multiline boxes in settings, line breaks preserved; variables like `{text}`, `{sentence}`, `{targetLang}`.                     |
-| 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                  |
-| ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.    |
-| 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                    |
-| 🌊 Streaming                   | On by default; the translation appears while it is generated. Can be turned off; falls back automatically with idle-based timeout. |
-| 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                  |
-| 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                            |
+| Capability                     | What it does                                                                                                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔤 Word / sentence translation | Select text in the Zotero PDF / EPUB reader; the translation appears inside the native selection popup, translation only.                                                                                                 |
+| 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                                                                                                           |
+| 🗣 US / UK IPA                  | The word prompt always returns three lines: **meaning** / **US IPA** / **UK IPA**, including people, places, brands and products.                                                                                         |
+| 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                                                                                                                |
+| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).                                                                                          |
+| ✍️ Fully editable prompts      | Multiple presets per kind, managed (new / copy / delete) and switched in settings; the result panel can try another preset on the spot. Line breaks and `{text}` / `{sentence}` / `{targetLang}` variables are preserved. |
+| 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                                                                                                         |
+| ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.                                                                                           |
+| 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                                                                                                           |
+| 🌊 Streaming                   | On by default; the translation appears while it is generated. Can be turned off; falls back automatically with idle-based timeout.                                                                                        |
+| 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                                                                                                         |
+| 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                                                                                                                   |
 
 ## Quick start
 
@@ -191,19 +191,24 @@ isolation and `about:config` recipes are in
 
 ## Custom prompts
 
-The **Prompt templates** section has two multiline boxes:
+The **Prompt templates** section has one group per selection kind, and each group can keep several
+prompts:
 
-| Box               | Used when the selection is detected as |
-| ----------------- | -------------------------------------- |
-| Word · context    | a word                                 |
-| Sentence · fluent | a sentence                             |
+| Control       | What it does                                                            |
+| ------------- | ----------------------------------------------------------------------- |
+| Dropdown      | Picks the preset **currently used** for that kind (saved immediately)   |
+| New / Copy    | Starts from the built-in prompt, or duplicates the current preset       |
+| Delete        | Removes a custom preset; built-ins are protected and can only be edited |
+| Name          | Shown in the result panel and in the preset dropdown                    |
+| Multiline box | The **system** prompt sent to the model; **line breaks are preserved**  |
 
-- Each box holds the **system** prompt sent to the model; edit it directly, **line breaks are
-  preserved**.
-- Leave a box empty to restore its built-in template; “Restore built-in templates” clears both.
-- The two slots are fully independent: changing the word prompt never changes sentence behavior.
+- The built-in preset of each kind is the fallback: it cannot be deleted, only rewritten, and a
+  blank box restores its built-in text.
+- The two kinds are fully independent: changing the word prompts never changes sentence behavior.
 - The selected text and context are appended to the user message automatically, so you do not have
   to write `{text}` / `{sentence}` in the template.
+- The result panel's preset dropdown re-translates with another preset of the same kind **for this
+  run only**; it never changes the default.
 
 Common variables:
 
@@ -232,7 +237,7 @@ detect kind   word ──► include the containing sentence as context
               sentence ──► leave {sentence} empty; optional neighbours
       │
       ▼
-route to the prompt slot → render variables → POST {baseURL}/chat/completions
+route to the active prompt preset → render variables → POST {baseURL}/chat/completions
       │
       ▼
 inline popup translation / result panel (kind, template, sentence, model · latency)
@@ -247,8 +252,9 @@ A few deliberate design choices:
   attachment text → live reader documents → Zotero's EPUB parser — then matches text. When a word
   occurs many times, a fingerprint (±40 characters captured at selection time) picks the most likely
   occurrence.
-- **Prompt routing is one line**: the detected kind decides which slot to read, and a missing slot
-  falls back to the built-in template with a warning.
+- **Prompt routing is one line**: the detected kind picks the active preset id, and a missing /
+  deleted id falls back to another preset of the same kind, then to the built-in template with a
+  warning.
 - **One client, many providers**: OpenAI and DeepSeek both speak the OpenAI chat-completions
   protocol; the difference is only a `baseURL` + `model` preset.
 
@@ -266,7 +272,7 @@ capable plugin (20+ services, PDF / EPUB / web / metadata / annotations / notes)
 | Focus         | Full translation toolbox          | One job, done deeply: selection + context                         |
 | Input         | word / paragraph / whole document | selection **+ its sentence**, with **different prompts per kind** |
 | Providers     | 20+, including classic engines    | LLM only, primarily OpenAI / DeepSeek compatible                  |
-| Prompts       | Configurable                      | **First-class**: two independent slots, fully variable-driven     |
+| Prompts       | Configurable                      | **First-class**: a preset library per kind, fully variable-driven |
 | Codebase size | Large                             | Intentionally small and readable                                  |
 
 What is reused is **engineering practice, not code**: the project is built on
@@ -327,7 +333,8 @@ All 15 limitations plus per-symptom fixes: **[troubleshooting](docs/troubleshoot
 
 - [x] Streaming output (on by default, can be turned off)
 - [ ] One-click write translation into annotations / notes
-- [ ] Prompt library management (add / edit / import / export)
+- [x] Prompt library (new / copy / delete, per-kind selection, in-panel switching)
+- [ ] Prompt import / export
 - [ ] Request cache (same word in the same sentence asks once)
 
 ### v0.3 — more capable

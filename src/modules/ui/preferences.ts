@@ -21,12 +21,23 @@ import {
   type ProviderId,
 } from "../llm/providers";
 import {
-  buildProfiles,
+  DEFAULT_PROFILE_ID,
+  PROFILE_KINDS,
+  activeProfileId,
+  addProfile,
+  defaultNameFor,
+  defaultSystemFor,
+  isBuiltinProfileId,
   isDefaultProfiles,
   parseProfiles,
-  readProfileTemplates,
+  profileKind,
+  profileList,
+  removeProfile,
   stringifyProfiles,
+  updateProfile,
+  type PromptProfiles,
 } from "../llm/prompt";
+import type { SelectionKind } from "../reader/selectionKind";
 import { normalizePopupFontSize } from "../reader/popupFontSize";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -195,19 +206,61 @@ function switchProvider(win: Window, next: ProviderId): void {
   writeProviderInputs(win, values);
 }
 
-/** Fill the two prompt textareas from the stored templates. */
-function syncPromptTemplates(win: Window): void {
-  const templates = readProfileTemplates(
-    parseProfiles(getPref("promptProfiles")),
+/** DOM ids of one kind's preset editor. */
+interface PromptEditorIds {
+  select: string;
+  name: string;
+  system: string;
+  create: string;
+  duplicate: string;
+  remove: string;
+}
+
+const PROMPT_EDITORS: Record<SelectionKind, PromptEditorIds> = {
+  word: {
+    select: "promptWordSelect",
+    name: "promptWordName",
+    system: "promptWord",
+    create: "promptWordNew",
+    duplicate: "promptWordCopy",
+    remove: "promptWordDelete",
+  },
+  sentence: {
+    select: "promptSentenceSelect",
+    name: "promptSentenceName",
+    system: "promptSentence",
+    create: "promptSentenceNew",
+    duplicate: "promptSentenceCopy",
+    remove: "promptSentenceDelete",
+  },
+};
+
+/** Which preset each kind is showing; kept per pane window. */
+const promptState = new WeakMap<
+  Window,
+  Partial<Record<SelectionKind, string>>
+>();
+
+function routingPrefFor(
+  kind: SelectionKind,
+): "promptProfileWord" | "promptProfileSentence" {
+  return kind === "word" ? "promptProfileWord" : "promptProfileSentence";
+}
+
+function readPromptLibrary(): PromptProfiles {
+  return parseProfiles(getPref("promptProfiles"));
+}
+
+/**
+ * The pref stays empty while the library is just the built-ins, so a future
+ * release can still improve the defaults without overwriting untouched
+ * settings.
+ */
+function storePromptLibrary(profiles: PromptProfiles): void {
+  setPref(
+    "promptProfiles",
+    isDefaultProfiles(profiles) ? "" : stringifyProfiles(profiles),
   );
-  const wordBox = byId<HTMLTextAreaElement>(win, "promptWord");
-  if (wordBox) {
-    wordBox.value = templates.word;
-  }
-  const sentenceBox = byId<HTMLTextAreaElement>(win, "promptSentence");
-  if (sentenceBox) {
-    sentenceBox.value = templates.sentence;
-  }
 }
 
 function setPromptStatus(win: Window, message: string): void {
@@ -217,36 +270,180 @@ function setPromptStatus(win: Window, message: string): void {
   }
 }
 
+/** Draw one kind's preset list and load the selected preset into the fields. */
+function renderPromptEditor(
+  win: Window,
+  kind: SelectionKind,
+  profiles: PromptProfiles = readPromptLibrary(),
+): void {
+  const ids = PROMPT_EDITORS[kind];
+  const state = promptState.get(win) ?? {};
+  promptState.set(win, state);
+
+  const list = profileList(profiles, kind);
+  const fallbackId = list[0]?.id ?? DEFAULT_PROFILE_ID[kind];
+  let id = state[kind];
+  if (!id || !profiles[id] || profileKind(id, profiles[id]) !== kind) {
+    id = fallbackId;
+  }
+  state[kind] = id;
+
+  const select = byId<HTMLSelectElement>(win, ids.select);
+  if (select) {
+    select.textContent = "";
+    for (const entry of list) {
+      addOption(win, select, entry.id, entry.name);
+    }
+    select.value = id;
+  }
+
+  const profile = profiles[id];
+  const nameInput = byId<HTMLInputElement>(win, ids.name);
+  if (nameInput) {
+    nameInput.value = profile?.name ?? id;
+  }
+  const systemBox = byId<HTMLTextAreaElement>(win, ids.system);
+  if (systemBox) {
+    systemBox.value = profile?.system ?? defaultSystemFor(kind);
+  }
+
+  const removeBtn = byId<HTMLButtonElement>(win, ids.remove);
+  if (removeBtn) {
+    removeBtn.disabled = isBuiltinProfileId(id);
+  }
+}
+
+/** Load both kinds from prefs (called when the pane is shown). */
+function syncPromptTemplates(win: Window): void {
+  const profiles = readPromptLibrary();
+  const state = promptState.get(win) ?? {};
+  promptState.set(win, state);
+  state.word = activeProfileId(profiles, "word", getPref("promptProfileWord"));
+  state.sentence = activeProfileId(
+    profiles,
+    "sentence",
+    getPref("promptProfileSentence"),
+  );
+  for (const kind of PROFILE_KINDS) {
+    renderPromptEditor(win, kind, profiles);
+  }
+}
+
 /**
- * Store both textareas.
+ * Write the visible fields back into the store.
  *
- * The pref stays empty while both templates match the built-ins, so a future
- * release can still improve the defaults without overwriting untouched
- * settings. A blank box is restored to its built-in prompt instead of being
+ * `id` defaults to the preset currently shown; the select handler passes the
+ * previous id because the DOM already holds the newly chosen one. A blank
+ * system prompt is restored to the built-in for that kind instead of being
  * saved as an empty system message, which every model would ignore.
  */
-function savePromptTemplates(win: Window): void {
-  const wordBox = byId<HTMLTextAreaElement>(win, "promptWord");
-  const sentenceBox = byId<HTMLTextAreaElement>(win, "promptSentence");
-  if (!wordBox || !sentenceBox) {
+function commitPromptEditor(
+  win: Window,
+  kind: SelectionKind,
+  id?: string,
+): PromptProfiles {
+  const ids = PROMPT_EDITORS[kind];
+  const current = readPromptLibrary();
+  const target = id ?? promptState.get(win)?.[kind];
+  if (!target || !current[target]) {
+    return current;
+  }
+
+  const nameInput = byId<HTMLInputElement>(win, ids.name);
+  const systemBox = byId<HTMLTextAreaElement>(win, ids.system);
+  const system = systemBox?.value ?? current[target].system;
+  if (systemBox && !system.trim()) {
+    // Show the restored prompt so a cleared box cannot look saved-as-empty.
+    systemBox.value = defaultSystemFor(kind);
+    setPromptStatus(win, getString("pref-profile-empty-reset"));
+  }
+
+  const next = updateProfile(current, target, {
+    name: nameInput?.value,
+    system: system.trim() ? system : defaultSystemFor(kind),
+  });
+  storePromptLibrary(next);
+  return next;
+}
+
+/** Pick the preset that translations of this kind use by default. */
+function selectPromptProfile(
+  win: Window,
+  kind: SelectionKind,
+  id: string,
+): void {
+  // The select already holds the new id, so the fields still belong to the
+  // previously shown preset and must be committed before switching.
+  const profiles = commitPromptEditor(win, kind);
+  const state = promptState.get(win) ?? {};
+  promptState.set(win, state);
+  state[kind] =
+    profiles[id] && profileKind(id, profiles[id]) === kind
+      ? id
+      : activeProfileId(profiles, kind);
+  setPref(routingPrefFor(kind), state[kind]!);
+  setPromptStatus(win, "");
+  renderPromptEditor(win, kind, profiles);
+}
+
+/** Add a preset, either from the built-in or as a copy of the current one. */
+function addPromptProfile(
+  win: Window,
+  kind: SelectionKind,
+  mode: "new" | "copy",
+): void {
+  const current = commitPromptEditor(win, kind);
+  const state = promptState.get(win) ?? {};
+  const id = state[kind];
+  const baseName = (id && current[id]?.name) || defaultNameFor(kind);
+  const name =
+    mode === "copy"
+      ? `${baseName}${getString("pref-prompt-copy-suffix")}`
+      : `${defaultNameFor(kind)} ${profileList(current, kind).length + 1}`;
+  const created = addProfile(current, kind, {
+    basedOn: mode === "copy" && id ? id : DEFAULT_PROFILE_ID[kind],
+    name,
+  });
+  storePromptLibrary(created.profiles);
+  state[kind] = created.id;
+  setPref(routingPrefFor(kind), created.id);
+  setPromptStatus(win, "");
+  renderPromptEditor(win, kind, created.profiles);
+  byId<HTMLInputElement>(win, PROMPT_EDITORS[kind].name)?.focus();
+}
+
+/** Delete a user preset; the built-in one is protected. */
+function deletePromptProfile(win: Window, kind: SelectionKind): void {
+  const state = promptState.get(win) ?? {};
+  const current = readPromptLibrary();
+  const id = state[kind];
+  if (!id || isBuiltinProfileId(id)) {
     return;
   }
-  const blank = !wordBox.value.trim() || !sentenceBox.value.trim();
-  const profiles = buildProfiles(
-    { word: wordBox.value, sentence: sentenceBox.value },
-    parseProfiles(getPref("promptProfiles")),
-  );
-  setPref(
-    "promptProfiles",
-    isDefaultProfiles(profiles) ? "" : stringifyProfiles(profiles),
-  );
-  if (blank) {
-    // Show the restored prompt so a cleared box cannot look saved-as-empty.
-    syncPromptTemplates(win);
-    setPromptStatus(win, getString("pref-profile-empty-reset"));
-  } else {
-    setPromptStatus(win, "");
+  const next = removeProfile(current, id);
+  storePromptLibrary(next);
+  // Deleting the active preset must not leave the router pointing at nothing.
+  const fallback = activeProfileId(next, kind);
+  state[kind] = fallback;
+  setPref(routingPrefFor(kind), fallback);
+  setPromptStatus(win, "");
+  renderPromptEditor(win, kind, next);
+}
+
+/** Drop every custom preset and go back to the built-in defaults. */
+function resetPromptProfiles(win: Window): void {
+  setPref("promptProfiles", "");
+  setPref("promptProfileWord", DEFAULT_PROFILE_ID.word);
+  setPref("promptProfileSentence", DEFAULT_PROFILE_ID.sentence);
+  const state = promptState.get(win) ?? {};
+  promptState.set(win, state);
+  state.word = DEFAULT_PROFILE_ID.word;
+  state.sentence = DEFAULT_PROFILE_ID.sentence;
+  const profiles = parseProfiles("");
+  for (const kind of PROFILE_KINDS) {
+    renderPromptEditor(win, kind, profiles);
   }
+  setPromptStatus(win, "");
 }
 
 const bound = new WeakSet<Window>();
@@ -292,16 +489,37 @@ function bindEvents(win: Window): void {
     setPref("popupFontSize", size);
   });
 
-  for (const key of ["promptWord", "promptSentence"] as const) {
-    const textarea = byId<HTMLTextAreaElement>(win, key);
-    textarea?.addEventListener("change", () => savePromptTemplates(win));
+  for (const kind of PROFILE_KINDS) {
+    const ids = PROMPT_EDITORS[kind];
+    const select = byId<HTMLSelectElement>(win, ids.select);
+    select?.addEventListener("change", () => {
+      selectPromptProfile(win, kind, select.value);
+    });
+
+    for (const key of [ids.name, ids.system]) {
+      const field = byId<HTMLInputElement | HTMLTextAreaElement>(win, key);
+      field?.addEventListener("change", () => {
+        renderPromptEditor(win, kind, commitPromptEditor(win, kind));
+      });
+    }
+
+    byId<HTMLButtonElement>(win, ids.create)?.addEventListener("click", () => {
+      addPromptProfile(win, kind, "new");
+    });
+    byId<HTMLButtonElement>(win, ids.duplicate)?.addEventListener(
+      "click",
+      () => {
+        addPromptProfile(win, kind, "copy");
+      },
+    );
+    byId<HTMLButtonElement>(win, ids.remove)?.addEventListener("click", () => {
+      deletePromptProfile(win, kind);
+    });
   }
 
   const resetBtn = byId<HTMLButtonElement>(win, "reset-profiles");
   resetBtn?.addEventListener("click", () => {
-    setPref("promptProfiles", "");
-    syncPromptTemplates(win);
-    setPromptStatus(win, "");
+    resetPromptProfiles(win);
   });
 }
 

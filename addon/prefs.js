@@ -24,7 +24,8 @@ pref("useContext", true);
 pref("sentenceContextNeighbors", false);
 pref("maxSentenceChars", 400);
 
-// Prompts
+// Prompts: the library lives in `promptProfiles`; each kind remembers the id
+// of the preset it currently uses, so adding presets never changes routing.
 pref("promptProfileWord", "word");
 pref("promptProfileSentence", "sentence");
 pref("promptProfiles", "");

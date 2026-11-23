@@ -8,6 +8,7 @@ panel-kind-sentence = SENTENCE
 panel-loading = Translating…
 panel-no-context = No context found (this PDF may have no text layer)
 panel-context-truncated = context truncated
+panel-profile-label = Prompt
 panel-profile-fallback = Prompt profile not found, falling back to the built-in one
 panel-btn-close = Close
 panel-btn-copy = Copy

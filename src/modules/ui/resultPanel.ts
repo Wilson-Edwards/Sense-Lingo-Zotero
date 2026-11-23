@@ -10,6 +10,8 @@ import type { SelectionKind } from "../reader/selectionKind";
 
 export interface PanelCallbacks {
   onFlipKind: (next: SelectionKind) => void;
+  /** Re-translate with another prompt preset of the current kind. */
+  onSelectProfile: (profileId: string) => void;
   onRetry: (userPrompt: string) => void;
   onCopy: () => void;
   onClose: () => void;
@@ -18,6 +20,9 @@ export interface PanelCallbacks {
 export interface PanelState {
   status: "loading" | "done" | "error";
   kind: SelectionKind;
+  profileId?: string;
+  /** Presets of the current kind; the picker only shows when there are 2+. */
+  profileOptions?: { id: string; name: string }[];
   profileName?: string;
   translation?: string;
   sentence?: string;
@@ -98,6 +103,18 @@ const S = {
     "user-select:text",
   ].join(";"),
   meta: "color:#999;font-size:11px;",
+  profileRow: "display:none;align-items:center;gap:6px;",
+  profileRowLabel: "color:#666;font-size:11px;white-space:nowrap;",
+  select: [
+    "flex:1",
+    "min-width:0",
+    "border:1px solid #d0d0d0",
+    "border-radius:4px",
+    "background:#f7f7f7",
+    "color:#333",
+    "font-size:11px",
+    "padding:2px 4px",
+  ].join(";"),
   footer: "display:flex;gap:6px;flex-wrap:wrap;",
   btn: [
     "border:1px solid #d0d0d0",
@@ -129,6 +146,10 @@ export class ResultPanel {
   private body: HTMLDivElement;
   private context: HTMLDivElement;
   private meta: HTMLDivElement;
+  private profileRow: HTMLDivElement;
+  private profileSelect: HTMLSelectElement;
+  /** Identity of the options currently rendered, to avoid rebuilding on every delta. */
+  private profileOptionsKey = "";
   private flipBtn: HTMLButtonElement;
   private retryBtn: HTMLButtonElement;
   private copyBtn: HTMLButtonElement;
@@ -156,6 +177,19 @@ export class ResultPanel {
     this.body = el(doc, "div", S.body);
     this.context = el(doc, "div", S.context);
     this.meta = el(doc, "div", S.meta);
+
+    this.profileRow = el(doc, "div", S.profileRow);
+    const profileRowLabel = el(
+      doc,
+      "span",
+      S.profileRowLabel,
+      getString("panel-profile-label"),
+    );
+    this.profileSelect = el(doc, "select", S.select);
+    this.profileSelect.addEventListener("change", () => {
+      this.callbacks?.onSelectProfile(this.profileSelect.value);
+    });
+    this.profileRow.append(profileRowLabel, this.profileSelect);
 
     const footer = el(doc, "div", S.footer);
     this.flipBtn = el(doc, "button", S.btn);
@@ -190,6 +224,7 @@ export class ResultPanel {
       this.body,
       this.context,
       this.meta,
+      this.profileRow,
       footer,
       this.editor,
       this.sendBtn,
@@ -283,8 +318,44 @@ export class ResultPanel {
     this.meta.textContent = meta.join(" · ");
     this.meta.style.display = meta.length ? "block" : "none";
 
+    this.renderProfilePicker(status);
+
     this.copyBtn.disabled = status !== "done" || !this.state.translation;
     this.retryBtn.disabled = status === "loading";
+  }
+
+  /**
+   * Sync the preset picker.
+   *
+   * Options are rebuilt only when the list itself changes: `render()` runs for
+   * every streamed chunk, and recreating the `<select>` there would close it
+   * while the user is picking another preset.
+   */
+  private renderProfilePicker(status: PanelState["status"]): void {
+    const options = this.state.profileOptions ?? [];
+    const key = options
+      .map((option) => `${option.id}\u0000${option.name}`)
+      .join("\u0001");
+    if (key !== this.profileOptionsKey) {
+      this.profileOptionsKey = key;
+      this.profileSelect.textContent = "";
+      for (const option of options) {
+        const node = this.doc.createElement("option");
+        node.value = option.id;
+        node.textContent = option.name;
+        this.profileSelect.appendChild(node);
+      }
+    }
+
+    this.profileRow.style.display = options.length > 1 ? "flex" : "none";
+    const selected = this.state.profileId;
+    if (selected && this.profileSelect.value !== selected) {
+      this.profileSelect.value = selected;
+    }
+    this.profileSelect.disabled = status === "loading";
+    this.profileSelect.title = this.state.usedFallback
+      ? getString("panel-profile-fallback")
+      : (this.state.profileName ?? "");
   }
 
   destroy(): void {

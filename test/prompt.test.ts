@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_PROFILES,
-  EDITABLE_PROFILE_IDS,
+  DEFAULT_PROFILE_ID,
   SENTENCE_PROFILE_ID,
   WORD_PROFILE_ID,
-  buildProfiles,
+  activeProfileId,
+  addProfile,
+  defaultSystemFor,
   getProfile,
+  isBuiltinProfileId,
   isDefaultProfiles,
+  nextProfileId,
   parseProfiles,
-  readProfileTemplates,
+  profileKind,
+  profileList,
+  removeProfile,
   resolveProfileId,
   stringifyProfiles,
+  updateProfile,
 } from "../src/modules/llm/prompt";
 import { renderPrompt, renderPromptFor } from "../src/modules/llm/render";
 import { resolveSentence } from "../src/modules/reader/sentence";
@@ -24,7 +31,10 @@ const context = resolveSentence(
 describe("parseProfiles", () => {
   it("falls back to the two built-in slots for empty input", () => {
     const profiles = parseProfiles("");
-    expect(Object.keys(profiles)).toEqual([...EDITABLE_PROFILE_IDS]);
+    expect(Object.keys(profiles)).toEqual([
+      WORD_PROFILE_ID,
+      SENTENCE_PROFILE_ID,
+    ]);
     expect(profiles[WORD_PROFILE_ID].kind).toBe("word");
     expect(profiles[SENTENCE_PROFILE_ID].kind).toBe("sentence");
   });
@@ -34,7 +44,7 @@ describe("parseProfiles", () => {
     expect(parseProfiles("{ not json")[WORD_PROFILE_ID]).toBeDefined();
   });
 
-  it("keeps only the two editable slots", () => {
+  it("keeps custom presets alongside the built-ins", () => {
     const profiles = parseProfiles(
       JSON.stringify({
         word: {
@@ -42,12 +52,30 @@ describe("parseProfiles", () => {
           system: "CUSTOM {targetLang}",
           user: "{text}",
         },
-        mine: { name: "Mine", system: "S", user: "U {text}" },
+        mine: { name: "Mine", kind: "word", system: "S", user: "U {text}" },
       }),
     );
     expect(profiles[WORD_PROFILE_ID].system).toBe("CUSTOM {targetLang}");
-    expect(profiles[WORD_PROFILE_ID].name).toBe("划词 · 语境辨析");
-    expect(profiles.mine).toBeUndefined();
+    expect(profiles.mine.name).toBe("Mine");
+    expect(profiles.mine.system).toBe("S");
+  });
+
+  it("infers the kind of a custom preset from its id", () => {
+    const profiles = parseProfiles(
+      JSON.stringify({
+        "sentence-literal": { name: "Literal", system: "S", user: "U" },
+        "word-term": { name: "Term", system: "S", user: "U" },
+      }),
+    );
+    expect(profiles["sentence-literal"].kind).toBe("sentence");
+    expect(profiles["word-term"].kind).toBe("word");
+  });
+
+  it("defaults a custom preset's envelope instead of dropping it", () => {
+    const profiles = parseProfiles(
+      JSON.stringify({ mine: { system: "Only a system prompt" } }),
+    );
+    expect(profiles.mine.user).toBe(DEFAULT_PROFILES[WORD_PROFILE_ID].user);
   });
 
   it("drops a slot whose templates are malformed", () => {
@@ -65,6 +93,121 @@ describe("parseProfiles", () => {
       WORD_PROFILE_ID,
       SENTENCE_PROFILE_ID,
     ]);
+  });
+});
+
+describe("prompt library", () => {
+  it("lists one kind with the built-in first", () => {
+    const profiles = parseProfiles(
+      JSON.stringify({
+        "word-b": { name: "B", kind: "word", system: "S", user: "U" },
+        "word-a": { name: "A", kind: "word", system: "S", user: "U" },
+        "sentence-x": { name: "X", kind: "sentence", system: "S", user: "U" },
+      }),
+    );
+    expect(profileList(profiles, "word").map((entry) => entry.id)).toEqual([
+      WORD_PROFILE_ID,
+      "word-b",
+      "word-a",
+    ]);
+    expect(profileList(profiles, "sentence").map((entry) => entry.id)).toEqual([
+      SENTENCE_PROFILE_ID,
+      "sentence-x",
+    ]);
+  });
+
+  it("generates a free id per kind", () => {
+    expect(nextProfileId(parseProfiles(""), "word")).toBe("word-2");
+    const twice = addProfile(
+      addProfile(parseProfiles(""), "word").profiles,
+      "word",
+    );
+    expect(twice.id).toBe("word-3");
+    expect(nextProfileId(parseProfiles(""), "sentence")).toBe("sentence-2");
+  });
+
+  it("seeds a new preset from the built-in of its kind", () => {
+    const { profiles, id } = addProfile(parseProfiles(""), "sentence", {
+      name: "直译",
+    });
+    expect(id).toBe("sentence-2");
+    expect(profiles[id].name).toBe("直译");
+    expect(profiles[id].kind).toBe("sentence");
+    expect(profiles[id].system).toBe(
+      DEFAULT_PROFILES[SENTENCE_PROFILE_ID].system,
+    );
+  });
+
+  it("copies an existing preset when asked", () => {
+    const custom = updateProfile(parseProfiles(""), WORD_PROFILE_ID, {
+      system: "Mine {targetLang}",
+    });
+    const { profiles, id } = addProfile(custom, "word", {
+      basedOn: WORD_PROFILE_ID,
+      name: "副本",
+    });
+    expect(profiles[id].system).toBe("Mine {targetLang}");
+  });
+
+  it("updates a preset and keeps the name when it is cleared", () => {
+    const edited = updateProfile(parseProfiles(""), WORD_PROFILE_ID, {
+      name: "  ",
+      system: "New system",
+    });
+    expect(edited[WORD_PROFILE_ID].name).toBe(
+      DEFAULT_PROFILES[WORD_PROFILE_ID].name,
+    );
+    expect(edited[WORD_PROFILE_ID].system).toBe("New system");
+  });
+
+  it("never deletes a built-in preset", () => {
+    const profiles = parseProfiles("");
+    expect(isBuiltinProfileId(WORD_PROFILE_ID)).toBe(true);
+    expect(removeProfile(profiles, WORD_PROFILE_ID)).toBe(profiles);
+  });
+
+  it("deletes a custom preset without touching the built-ins", () => {
+    const { profiles, id } = addProfile(parseProfiles(""), "word");
+    const trimmed = removeProfile(profiles, id);
+    expect(trimmed[id]).toBeUndefined();
+    expect(trimmed[WORD_PROFILE_ID]).toBeDefined();
+  });
+
+  it("knows when the library is just the built-ins", () => {
+    expect(isDefaultProfiles(parseProfiles(""))).toBe(true);
+    const custom = updateProfile(parseProfiles(""), WORD_PROFILE_ID, {
+      system: "custom",
+    });
+    expect(isDefaultProfiles(custom)).toBe(false);
+    expect(
+      isDefaultProfiles(addProfile(parseProfiles(""), "word").profiles),
+    ).toBe(false);
+  });
+
+  it("resolves the active id, falling back to the first of the kind", () => {
+    const { profiles, id } = addProfile(parseProfiles(""), "word", {
+      name: "Mine",
+    });
+    expect(activeProfileId(profiles, "word", id)).toBe(id);
+    expect(activeProfileId(profiles, "word", "deleted")).toBe(WORD_PROFILE_ID);
+
+    const withoutBuiltin = { ...profiles };
+    delete withoutBuiltin[WORD_PROFILE_ID];
+    expect(activeProfileId(withoutBuiltin, "word", "deleted")).toBe(id);
+  });
+
+  it("derives the kind from the id when needed", () => {
+    expect(profileKind("sentence-2")).toBe("sentence");
+    expect(profileKind("academic")).toBe("word");
+    expect(
+      profileKind("word", { ...DEFAULT_PROFILES.word, kind: "sentence" }),
+    ).toBe("sentence");
+  });
+
+  it("exposes the built-in system prompt of a kind", () => {
+    expect(defaultSystemFor("word")).toBe(
+      DEFAULT_PROFILES[WORD_PROFILE_ID].system,
+    );
   });
 });
 
@@ -92,6 +235,18 @@ describe("routing", () => {
     expect(resolved.usedFallback).toBe(true);
   });
 
+  it("falls back to another preset of the same kind", () => {
+    const { profiles, id } = addProfile(parseProfiles(""), "word", {
+      name: "Mine",
+    });
+    const withoutBuiltin = { ...profiles };
+    delete withoutBuiltin[WORD_PROFILE_ID];
+    const resolved = getProfile(withoutBuiltin, "nope", "word");
+    expect(resolved.profileId).toBe(id);
+    expect(resolved.profileName).toBe("Mine");
+    expect(resolved.usedFallback).toBe(true);
+  });
+
   it("does not fall back for the built-in slots", () => {
     const word = getProfile(parseProfiles(""), WORD_PROFILE_ID, "word");
     expect(word.profileId).toBe(WORD_PROFILE_ID);
@@ -105,73 +260,50 @@ describe("routing", () => {
     expect(sentence.profileId).toBe(SENTENCE_PROFILE_ID);
     expect(sentence.usedFallback).toBe(false);
   });
+
+  it("keeps the built-in id of each kind addressable", () => {
+    expect(DEFAULT_PROFILE_ID.word).toBe(WORD_PROFILE_ID);
+    expect(DEFAULT_PROFILE_ID.sentence).toBe(SENTENCE_PROFILE_ID);
+  });
 });
 
-describe("editable profile templates", () => {
-  it("exposes exactly the two built-in slots", () => {
+describe("editable templates", () => {
+  it("exposes exactly the two built-in slots by default", () => {
     expect(Object.keys(DEFAULT_PROFILES)).toEqual([
       WORD_PROFILE_ID,
       SENTENCE_PROFILE_ID,
     ]);
   });
 
-  it("reads the built-in prompts when nothing is stored", () => {
-    const templates = readProfileTemplates(parseProfiles(""));
-    expect(templates.word).toBe(DEFAULT_PROFILES[WORD_PROFILE_ID].system);
-    expect(templates.sentence).toBe(
-      DEFAULT_PROFILES[SENTENCE_PROFILE_ID].system,
-    );
-  });
-
-  it("reads a stored override", () => {
+  it("keeps newlines and variables in a stored override", () => {
     const profiles = parseProfiles(
-      JSON.stringify({ word: { system: "custom word", user: "{text}" } }),
+      JSON.stringify({
+        word: { system: "Line one\nLine two {targetLang}", user: "{text}" },
+      }),
     );
-    expect(readProfileTemplates(profiles).word).toBe("custom word");
-  });
-
-  it("builds the two slots from the textareas and keeps newlines", () => {
-    const profiles = buildProfiles({
-      word: "Line one\nLine two {targetLang}",
-      sentence: "Sentence prompt",
-    });
-    expect(Object.keys(profiles)).toEqual([
-      WORD_PROFILE_ID,
-      SENTENCE_PROFILE_ID,
-    ]);
     expect(profiles[WORD_PROFILE_ID].system).toBe(
       "Line one\nLine two {targetLang}",
     );
-    expect(profiles[SENTENCE_PROFILE_ID].system).toBe("Sentence prompt");
-    expect(profiles[WORD_PROFILE_ID].user).toBe(
-      DEFAULT_PROFILES[WORD_PROFILE_ID].user,
-    );
   });
 
-  it("restores the built-in prompt when a textarea is blank", () => {
-    const profiles = buildProfiles({ word: "   ", sentence: "custom" });
+  it("restores the built-in prompt when the stored system is blank", () => {
+    const profiles = parseProfiles(
+      JSON.stringify({ word: { system: "   ", user: "{text}" } }),
+    );
     expect(profiles[WORD_PROFILE_ID].system).toBe(
       DEFAULT_PROFILES[WORD_PROFILE_ID].system,
     );
-    expect(profiles[SENTENCE_PROFILE_ID].system).toBe("custom");
   });
 
-  it("keeps a legacy user template when the system prompt changes", () => {
+  it("keeps a custom user envelope when the system prompt changes", () => {
     const current = parseProfiles(
       JSON.stringify({ word: { system: "old", user: "Custom {text}" } }),
     );
-    const profiles = buildProfiles({ word: "new", sentence: "s" }, current);
+    const profiles = updateProfile(current, WORD_PROFILE_ID, {
+      system: "new",
+    });
     expect(profiles[WORD_PROFILE_ID].user).toBe("Custom {text}");
-  });
-
-  it("detects when both slots are unchanged", () => {
-    expect(isDefaultProfiles(parseProfiles(""))).toBe(true);
-    expect(
-      isDefaultProfiles(buildProfiles({ word: "custom", sentence: "s" })),
-    ).toBe(false);
-    expect(
-      isDefaultProfiles(buildProfiles(readProfileTemplates(parseProfiles("")))),
-    ).toBe(true);
+    expect(profiles[WORD_PROFILE_ID].system).toBe("new");
   });
 });
 
@@ -263,6 +395,27 @@ describe("renderPromptFor", () => {
     expect(rendered.profileId).toBe("mine");
     expect(rendered.profileName).toBe("Mine");
     expect(rendered.system).toBe("Translate into zh-CN.");
+  });
+
+  it("lets a per-run preset override the per-kind default", () => {
+    const profiles = {
+      ...base.profiles,
+      mine: {
+        name: "Mine",
+        kind: "sentence" as const,
+        system: "Literal: {text}",
+        user: "{text}",
+      },
+    };
+    const rendered = renderPromptFor({
+      ...base,
+      profiles,
+      kind: "sentence",
+      sentenceProfileId: SENTENCE_PROFILE_ID,
+      profileId: "mine",
+    });
+    expect(rendered.profileId).toBe("mine");
+    expect(rendered.system).toBe("Literal: mitigate");
   });
 });
 

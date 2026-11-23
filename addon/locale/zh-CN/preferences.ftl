@@ -23,10 +23,15 @@ pref-context-neighbors = 划句时带出前后各一句
 pref-max-sentence-chars = 单句上下文长度上限
 
 pref-head-prompts = 提示词模板
-pref-prompt-hint = 直接编辑系统提示词，换行会原样保留；支持 {"{"}text{"}"}、{"{"}sentence{"}"}、{"{"}targetLang{"}"} 等变量。划选的文本会自动附在消息末尾，留空则使用内置模板。
-pref-word-template = 划词 · 语境辨析
-pref-sentence-template = 划句 · 通顺翻译
-pref-reset-profiles = 恢复内置默认模板
+pref-prompt-hint = 每种选区类型都可以保存多套提示词，下拉框里选中的就是当前使用的那一套。「新建」从内置模板开始，「复制」复制当前模板。直接编辑系统提示词，换行会原样保留；支持 {"{"}text{"}"}、{"{"}sentence{"}"}、{"{"}targetLang{"}"} 等变量。划选的文本会自动附在消息末尾，留空则恢复内置模板。
+pref-prompt-new = 新建
+pref-prompt-copy = 复制
+pref-prompt-delete = 删除
+pref-prompt-name = 名称
+pref-prompt-copy-suffix = （副本）
+pref-word-template = 划词模板
+pref-sentence-template = 划句模板
+pref-reset-profiles = 恢复内置默认模板（删除所有自定义模板）
 pref-profile-empty-reset = 模板为空，已恢复内置默认模板
 
 pref-head-ui = 界面与高级

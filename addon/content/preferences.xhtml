@@ -154,12 +154,36 @@
       style="color: #b42318; min-height: 14px"
     ></html:div>
 
-    <html:div class="sl-row">
+    <hbox align="center" class="sl-row">
       <html:label
-        for="sl-promptWord"
+        for="sl-promptWordSelect"
         data-l10n-id="pref-word-template"
       ></html:label>
-    </html:div>
+      <html:select
+        id="sl-promptWordSelect"
+        style="min-width: 180px"
+      ></html:select>
+      <html:button
+        id="sl-promptWordNew"
+        data-l10n-id="pref-prompt-new"
+      ></html:button>
+      <html:button
+        id="sl-promptWordCopy"
+        data-l10n-id="pref-prompt-copy"
+      ></html:button>
+      <html:button
+        id="sl-promptWordDelete"
+        data-l10n-id="pref-prompt-delete"
+      ></html:button>
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-promptWordName"
+        data-l10n-id="pref-prompt-name"
+      ></html:label>
+      <html:input type="text" id="sl-promptWordName" style="min-width: 240px" />
+    </hbox>
     <html:textarea
       id="sl-promptWord"
       class="sl-prompt"
@@ -167,12 +191,40 @@
       style="min-height: 170px"
     ></html:textarea>
 
-    <html:div class="sl-row" style="margin-top: 10px">
+    <hbox align="center" class="sl-row" style="margin-top: 10px">
       <html:label
-        for="sl-promptSentence"
+        for="sl-promptSentenceSelect"
         data-l10n-id="pref-sentence-template"
       ></html:label>
-    </html:div>
+      <html:select
+        id="sl-promptSentenceSelect"
+        style="min-width: 180px"
+      ></html:select>
+      <html:button
+        id="sl-promptSentenceNew"
+        data-l10n-id="pref-prompt-new"
+      ></html:button>
+      <html:button
+        id="sl-promptSentenceCopy"
+        data-l10n-id="pref-prompt-copy"
+      ></html:button>
+      <html:button
+        id="sl-promptSentenceDelete"
+        data-l10n-id="pref-prompt-delete"
+      ></html:button>
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-promptSentenceName"
+        data-l10n-id="pref-prompt-name"
+      ></html:label>
+      <html:input
+        type="text"
+        id="sl-promptSentenceName"
+        style="min-width: 240px"
+      />
+    </hbox>
     <html:textarea
       id="sl-promptSentence"
       class="sl-prompt"

@@ -123,6 +123,12 @@ export interface TranslateInput {
   fingerprint?: SentenceFingerprint;
   /** Force a kind, e.g. when the user flips word/sentence in the panel. */
   kindOverride?: SelectionKind;
+  /**
+   * Force a prompt preset for this run, e.g. when the panel's template picker
+   * switches to another preset. Falls back to the per-kind default when the id
+   * is missing or dangling.
+   */
+  profileIdOverride?: string;
   /** Replace the rendered user prompt, for the panel's "edit prompt" flow. */
   userPromptOverride?: string;
   /**
@@ -252,6 +258,7 @@ export async function translate(
     profiles: settings.profiles,
     wordProfileId: settings.wordProfileId,
     sentenceProfileId: settings.sentenceProfileId,
+    profileId: input.profileIdOverride,
   });
 
   const userPrompt = input.userPromptOverride ?? rendered.user;

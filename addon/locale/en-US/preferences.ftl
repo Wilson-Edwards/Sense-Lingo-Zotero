@@ -23,10 +23,15 @@ pref-context-neighbors = Include neighbouring sentences for sentences
 pref-max-sentence-chars = Max context sentence length
 
 pref-head-prompts = Prompt templates
-pref-prompt-hint = Edit the system prompt directly; line breaks are preserved. Variables such as {"{"}text{"}"}, {"{"}sentence{"}"} and {"{"}targetLang{"}"} are substituted, and the selected text is appended automatically. Leave a box empty to use the built-in prompt.
-pref-word-template = Word · contextual disambiguation
-pref-sentence-template = Sentence · fluent translation
-pref-reset-profiles = Restore built-in templates
+pref-prompt-hint = Each selection kind can keep several prompts; the preset selected above is the one in use. "New" starts from the built-in prompt, "Copy" duplicates the current one. Line breaks are preserved and variables such as {"{"}text{"}"}, {"{"}sentence{"}"} and {"{"}targetLang{"}"} are substituted; the selected text is appended automatically, and a blank box restores the built-in prompt.
+pref-prompt-new = New
+pref-prompt-copy = Copy
+pref-prompt-delete = Delete
+pref-prompt-name = Name
+pref-prompt-copy-suffix = (copy)
+pref-word-template = Word prompt
+pref-sentence-template = Sentence prompt
+pref-reset-profiles = Restore built-in templates (drops every custom prompt)
 pref-profile-empty-reset = Template was empty; restored the built-in default
 
 pref-head-ui = Interface & advanced

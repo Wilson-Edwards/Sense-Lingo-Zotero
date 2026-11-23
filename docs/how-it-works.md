@@ -37,7 +37,7 @@
      sentence → {sentence} = 空串；可选 {prevSentence} / {nextSentence}
         │
         ▼
-⑤ Prompt Router + Render —— 按 kind 选槽位，替换 {变量}
+⑤ Prompt Router + Render —— 按 kind 选模板，替换 {变量}
         │  messages[system, user]
         ▼
 ⑥ LLM Client —— POST {baseURL}/chat/completions（OpenAI 兼容）
@@ -152,8 +152,12 @@ sentence → 划选本身就是待译正文，{sentence} 置空串
 profileId = kind === "word" ? promptProfileWord : promptProfileSentence;
 ```
 
-- 两个槽位**完全独立**：改划词模板不会影响划句行为，反之亦然。
-- 某个键指向不存在的槽位时，回退到同类型的内置模板，面板模板名会带说明（悬停可见），日志里写一条 `warn`。
+- `promptProfileWord` / `promptProfileSentence` 只存**模板 id**；模板本身放在 `promptProfiles`
+  提示词库里，每个 id 一套 `{ name, kind, system, user }`。
+- 两种类型**完全独立**：改划词模板不会影响划句行为，反之亦然；每类都可以保存多套并切换默认。
+- 某个 id 指向不存在的模板时，先回退到同类型的下一套模板，再回退内置模板，
+  面板模板名会带说明（悬停可见），日志里写一条 `warn`。
+- 结果面板可以按 id **临时**覆盖本次使用的模板（`profileIdOverride`），只影响那一次请求。
 - 渲染是**纯文本替换**：`{var}` 命中就替换，未识别的 `{xxx}` 原样保留，
   因此模板里的 LaTeX 和数学公式不会被误伤。
 
@@ -213,7 +217,9 @@ Content-Type: application/json
 - **快捷键结果面板**展示更多信息：
   - 顶部：本次判定类型（词 / 句）与所用模板名；
   - 正文：译文；划词模式下再显示命中的原句（取不到时提示「未取到上下文」）；
-  - 底部：`模型 · 耗时`，以及「按句重译 / 按词重译」「改提示词」「复制」。
+  - 底部：`模型 · 耗时`，以及「按句重译 / 按词重译」「改提示词」「复制」；
+    该类型有多套模板时，还会显示模板下拉框，选中即换一套模板重译（只影响本次，
+    不改默认设置）。
 - 面板「改提示词」编辑的是**这一次请求的 user 消息**（变量已渲染），只对本次生效；
   想长期修改请改设置页的 system 模板（见 [提示词自定义](prompts.md)）。
 
@@ -235,7 +241,7 @@ Content-Type: application/json
 | `src/modules/translate.ts`  | 主管线：类型 → 上下文 → 提示词 → LLM                 |
 | `src/modules/controller.ts` | UI 与管线之间：状态机、错误文案、剪贴板              |
 | `src/modules/reader/*`      | 划词弹窗、快捷键、类型判定、句子定位、文本来源、锚点 |
-| `src/modules/llm/prompt.ts` | 两个模板槽位、内置默认模板、路由与回退               |
+| `src/modules/llm/prompt.ts` | 提示词库、内置模板、路由与回退                       |
 | `src/modules/llm/render.ts` | 变量替换                                             |
 | `src/modules/llm/client.ts` | OpenAI 兼容客户端：地址归一、超时、错误归一          |
 | `src/modules/llm/format.ts` | 划词三行格式归一                                     |

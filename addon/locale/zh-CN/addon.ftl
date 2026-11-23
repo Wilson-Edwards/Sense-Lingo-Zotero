@@ -8,6 +8,7 @@ panel-kind-sentence = 句
 panel-loading = 翻译中…
 panel-no-context = 未取到上下文（该 PDF 可能没有文本层）
 panel-context-truncated = 上下文已截断
+panel-profile-label = 模板
 panel-profile-fallback = 指定的提示词模板不存在，已回退到内置模板
 panel-btn-close = 关闭
 panel-btn-copy = 复制

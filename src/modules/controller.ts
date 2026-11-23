@@ -4,6 +4,7 @@
  */
 
 import { LlmError } from "./llm/client";
+import { activeProfileId, profileList } from "./llm/prompt";
 import {
   detectSelectionKind,
   type SelectionKind,
@@ -142,13 +143,16 @@ export async function translateInline(
  * Translate `text` and render the result in the panel.
  *
  * `kindOverride` is what the panel's "switch to word / sentence" button passes;
- * `userPromptOverride` comes from the inline prompt editor.
+ * `userPromptOverride` comes from the inline prompt editor; `profileIdOverride`
+ * is the preset the panel's template picker selected. Both overrides only apply
+ * to the run they were made for.
  */
 export async function translateAndShow(
   target: ReaderTarget,
   text: string,
   kindOverride?: SelectionKind,
   userPromptOverride?: string,
+  profileIdOverride?: string,
 ): Promise<void> {
   const trimmed = (text ?? "").trim();
   if (!trimmed) {
@@ -161,6 +165,7 @@ export async function translateAndShow(
       },
       {
         onFlipKind: () => undefined,
+        onSelectProfile: () => undefined,
         onRetry: () => undefined,
         onCopy: () => undefined,
         onClose: () => hidePanel(target.doc),
@@ -179,11 +184,18 @@ export async function translateAndShow(
     });
 
   let currentKind: SelectionKind = previewKind;
+  /**
+   * Preset currently shown in the panel. Undefined means "use the per-kind
+   * default from prefs"; the first result pins the actual id.
+   */
+  let currentProfileId: string | undefined = profileIdOverride;
   /** Prompt override for the *next* request only. */
   let pendingPrompt: string | undefined = userPromptOverride;
+  /** Preset switch for the *next* request only. */
+  let pendingProfile: string | undefined;
   /**
-   * Flip / retry can start a new request while the previous one is still
-   * streaming; only the newest run is allowed to touch the panel.
+   * Flip / retry / preset switch can start a new request while the previous one
+   * is still streaming; only the newest run is allowed to touch the panel.
    */
   let runId = 0;
 
@@ -191,21 +203,55 @@ export async function translateAndShow(
     const runToken = ++runId;
     if (nextKind) {
       currentKind = nextKind;
+      currentProfileId = undefined;
     }
+    const settingsForRun = readSettings();
     const promptForThisRun = pendingPrompt;
-    // A manually edited prompt belongs to the run it was written for, so it is
-    // consumed here instead of leaking into later word/sentence switches.
+    const profileForThisRun = pendingProfile ?? currentProfileId;
+    // A manual edit or a preset switch belongs to the run it was made for, so
+    // they are consumed here instead of leaking into later retries / flips.
     pendingPrompt = undefined;
+    pendingProfile = undefined;
+    if (profileForThisRun) {
+      currentProfileId = profileForThisRun;
+    }
+
+    const profileOptions = profileList(settingsForRun.profiles, currentKind);
+    const preferredProfileId = activeProfileId(
+      settingsForRun.profiles,
+      currentKind,
+      profileForThisRun ??
+        (currentKind === "word"
+          ? settingsForRun.wordProfileId
+          : settingsForRun.sentenceProfileId),
+    );
+    // Keep the picker on a preset it actually lists, even when the routing pref
+    // points at a profile grouped under the other kind.
+    const shownProfileId = profileOptions.some(
+      (entry) => entry.id === preferredProfileId,
+    )
+      ? preferredProfileId
+      : (profileOptions[0]?.id ?? preferredProfileId);
+
+    const selectProfile = (profileId: string): void => {
+      pendingPrompt = undefined;
+      pendingProfile = profileId;
+      void run();
+    };
 
     const loadingState: PanelState = {
       status: "loading",
       kind: currentKind,
+      profileId: shownProfileId,
+      profileOptions,
     };
     const panel = showPanel(target.doc, loadingState, {
       onFlipKind: (kind) => {
         pendingPrompt = undefined;
+        pendingProfile = undefined;
         void run(kind);
       },
+      onSelectProfile: selectProfile,
       onRetry: (prompt) => {
         pendingPrompt = prompt;
         void run();
@@ -222,6 +268,7 @@ export async function translateAndShow(
         getLocalTexts: () => readerTexts(target),
         fingerprint: target.anchor?.fingerprint,
         kindOverride: currentKind,
+        profileIdOverride: profileForThisRun,
         userPromptOverride: promptForThisRun,
         // With streaming on, the panel shows text as it arrives instead of
         // waiting for the whole answer.
@@ -236,6 +283,7 @@ export async function translateAndShow(
         return;
       }
       currentKind = result.kind;
+      currentProfileId = result.profileId;
       showPanel(
         target.doc,
         {
@@ -245,7 +293,9 @@ export async function translateAndShow(
           sentence: result.sentence,
           hasContext: result.hasContext,
           truncated: result.truncated,
+          profileId: result.profileId,
           profileName: result.profileName,
+          profileOptions,
           usedFallback: result.usedFallback,
           userPrompt: result.userPrompt,
           meta: `${result.model} · ${result.elapsedMs}ms`,
@@ -253,8 +303,10 @@ export async function translateAndShow(
         {
           onFlipKind: (kind) => {
             pendingPrompt = undefined;
+            pendingProfile = undefined;
             void run(kind);
           },
+          onSelectProfile: selectProfile,
           onRetry: (prompt) => {
             pendingPrompt = prompt;
             void run();
@@ -274,12 +326,16 @@ export async function translateAndShow(
           status: "error",
           kind: currentKind,
           errorMessage: messageForError(err),
+          profileId: shownProfileId,
+          profileOptions,
         },
         {
           onFlipKind: (kind) => {
             pendingPrompt = undefined;
+            pendingProfile = undefined;
             void run(kind);
           },
+          onSelectProfile: selectProfile,
           onRetry: (prompt) => {
             pendingPrompt = prompt;
             void run();

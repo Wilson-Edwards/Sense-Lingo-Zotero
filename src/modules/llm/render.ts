@@ -68,6 +68,8 @@ export interface RenderPromptInput extends PromptVarsInput {
   profiles: PromptProfiles;
   wordProfileId?: string;
   sentenceProfileId?: string;
+  /** Explicit preset for this run; wins over the per-kind default. */
+  profileId?: string;
 }
 
 export interface RenderedPrompt {
@@ -82,11 +84,9 @@ export interface RenderedPrompt {
 
 /** Route by kind, then render the profile's system/user templates. */
 export function renderPromptFor(input: RenderPromptInput): RenderedPrompt {
-  const profileId = resolveProfileId(
-    input.kind,
-    input.wordProfileId,
-    input.sentenceProfileId,
-  );
+  const profileId =
+    input.profileId?.trim() ||
+    resolveProfileId(input.kind, input.wordProfileId, input.sentenceProfileId);
   const resolved: ResolvedProfile = getProfile(
     input.profiles,
     profileId,
