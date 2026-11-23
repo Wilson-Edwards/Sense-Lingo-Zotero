@@ -221,6 +221,16 @@ function showInlineResult(
   slot.textContent = result.ok ? result.translation : result.message;
 }
 
+/** Render a streamed chunk; the popup may close while the request is open. */
+function showInlinePartial(slot: HTMLDivElement, translation: string): void {
+  if (!slot.isConnected || !translation) {
+    return;
+  }
+  slot.style.display = "block";
+  slot.style.color = "#1a1a1a";
+  slot.textContent = translation;
+}
+
 function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   const doc = event.doc;
   const annotationText = event.params?.annotation?.text ?? "";
@@ -307,7 +317,13 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   };
 
   const run = (): void => {
-    apply(translateInPopup(doc, cacheKey, () => translateInline(target, text)));
+    apply(
+      translateInPopup(doc, cacheKey, () =>
+        translateInline(target, text, (partial) =>
+          showInlinePartial(slot, partial),
+        ),
+      ),
+    );
   };
 
   const autoTranslate = getBooleanPref("autoTranslate", false);

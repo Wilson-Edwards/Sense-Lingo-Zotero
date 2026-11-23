@@ -52,15 +52,16 @@ cp .env.example .env
 
 ## 测试
 
-`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，10 个文件、134 个用例：
+`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，11 个文件、147 个用例：
 
 | 测试文件                      | 用例 | 覆盖内容                                                   |
 | ----------------------------- | ---- | ---------------------------------------------------------- |
 | `sentence.test.ts`            | 28   | 分句、缩写、断词、空白不敏感匹配、指纹消歧、前后句、截断   |
 | `prompt.test.ts`              | 30   | 模板解析、路由、回退、默认模板判定、变量渲染               |
 | `selectionKind.test.ts`       | 19   | 1/3/4 词边界、标点、缩写、跨行、中英混排、纯数字、强制模式 |
-| `chatCompletion.test.ts`      | 11   | 请求构造、地址归一、响应解析、错误归一                     |
-| `client.test.ts`              | 9    | 端点拼接、超时、HTTP / 网络错误                            |
+| `chatCompletion.test.ts`      | 12   | 请求构造、地址归一、响应解析、错误归一、服务商预设         |
+| `chatStream.test.ts`          | 9    | SSE 增量解析、跨包拼接、`[DONE]`、JSON 回退、流内错误      |
+| `client.test.ts`              | 12   | 端点拼接、响应 / 流式分片解析                              |
 | `popupTranslation.test.ts`    | 10   | 请求共享、60 秒缓存、失败不缓存                            |
 | `popupFontSize.test.ts`       | 9    | 字号钳制、弹窗宽度                                         |
 | `providerCredentials.test.ts` | 8    | 服务商配置的存取与切换隔离                                 |

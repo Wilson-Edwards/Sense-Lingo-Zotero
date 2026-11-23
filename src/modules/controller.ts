@@ -110,11 +110,13 @@ export type InlineTranslation =
 /**
  * Translate `text` for the reader selection popup, where nothing but the plain
  * translation is displayed. User-facing error text is produced here, so the
- * popup code stays free of error mapping.
+ * popup code stays free of error mapping. `onDelta` receives the translation
+ * assembled so far while the model is still streaming.
  */
 export async function translateInline(
   target: ReaderTarget,
   text: string,
+  onDelta?: (partialTranslation: string) => void,
 ): Promise<InlineTranslation> {
   const trimmed = (text ?? "").trim();
   if (!trimmed) {
@@ -127,6 +129,7 @@ export async function translateInline(
       itemTitle: target.itemTitle,
       getLocalTexts: () => readerTexts(target),
       fingerprint: target.anchor?.fingerprint,
+      onDelta,
     });
     return { ok: true, translation: result.translation };
   } catch (err) {
@@ -178,8 +181,14 @@ export async function translateAndShow(
   let currentKind: SelectionKind = previewKind;
   /** Prompt override for the *next* request only. */
   let pendingPrompt: string | undefined = userPromptOverride;
+  /**
+   * Flip / retry can start a new request while the previous one is still
+   * streaming; only the newest run is allowed to touch the panel.
+   */
+  let runId = 0;
 
   const run = async (nextKind?: SelectionKind): Promise<void> => {
+    const runToken = ++runId;
     if (nextKind) {
       currentKind = nextKind;
     }
@@ -192,7 +201,7 @@ export async function translateAndShow(
       status: "loading",
       kind: currentKind,
     };
-    showPanel(target.doc, loadingState, {
+    const panel = showPanel(target.doc, loadingState, {
       onFlipKind: (kind) => {
         pendingPrompt = undefined;
         void run(kind);
@@ -214,7 +223,18 @@ export async function translateAndShow(
         fingerprint: target.anchor?.fingerprint,
         kindOverride: currentKind,
         userPromptOverride: promptForThisRun,
+        // With streaming on, the panel shows text as it arrives instead of
+        // waiting for the whole answer.
+        onDelta: (partial) => {
+          if (runToken === runId) {
+            panel.setState({ translation: partial });
+          }
+        },
       });
+      if (runToken !== runId) {
+        // A newer run already owns the panel; drop this result silently.
+        return;
+      }
       currentKind = result.kind;
       showPanel(
         target.doc,
@@ -245,6 +265,9 @@ export async function translateAndShow(
       );
     } catch (err) {
       logError("translate failed", err);
+      if (runToken !== runId) {
+        return;
+      }
       showPanel(
         target.doc,
         {

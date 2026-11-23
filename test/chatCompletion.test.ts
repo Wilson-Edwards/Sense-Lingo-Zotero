@@ -7,12 +7,16 @@ import {
   resolveProviderConfig,
 } from "../src/modules/llm/providers";
 
-const config = resolveProviderConfig({
-  provider: "openai",
-  apiKey: "sk-test",
-  model: "",
-  baseURL: "",
-});
+const config = {
+  ...resolveProviderConfig({
+    provider: "openai",
+    apiKey: "sk-test",
+    model: "",
+    baseURL: "",
+  }),
+  // This suite covers the non-streaming path; streaming has its own tests.
+  stream: false,
+};
 
 const messages = [
   { role: "system" as const, content: "sys" },
@@ -166,5 +170,12 @@ describe("provider presets", () => {
   it("normalizes unknown provider ids", () => {
     expect(normalizeProviderId("deepseek")).toBe("deepseek");
     expect(normalizeProviderId("nope")).toBe("openai");
+  });
+
+  it("streams by default and can be turned off", () => {
+    expect(resolveProviderConfig({ provider: "openai" }).stream).toBe(true);
+    expect(
+      resolveProviderConfig({ provider: "openai", stream: false }).stream,
+    ).toBe(false);
   });
 });

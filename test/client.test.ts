@@ -5,6 +5,7 @@ import {
   buildChatEndpoint,
   normalizeBaseURL,
   parseChatCompletion,
+  parseStreamChunk,
 } from "../src/modules/llm/client";
 
 describe("normalizeBaseURL", () => {
@@ -68,5 +69,32 @@ describe("parseChatCompletion", () => {
 
   it("throws on a non-object payload", () => {
     expect(() => parseChatCompletion("nope")).toThrowError(LlmError);
+  });
+
+  describe("parseStreamChunk", () => {
+    it("reads the delta text and model", () => {
+      expect(
+        parseStreamChunk({
+          model: "gpt-test",
+          choices: [{ delta: { content: "减" } }],
+        }),
+      ).toEqual({ delta: "减", model: "gpt-test" });
+    });
+
+    it("joins array delta parts", () => {
+      expect(
+        parseStreamChunk({
+          choices: [{ delta: { content: [{ text: "a" }, "b"] } }],
+        }).delta,
+      ).toBe("ab");
+    });
+
+    it("returns an empty delta when there is no content", () => {
+      expect(parseStreamChunk({ choices: [{ delta: {} }] })).toEqual({
+        delta: "",
+        model: undefined,
+      });
+      expect(parseStreamChunk(null)).toEqual({ delta: "" });
+    });
   });
 });

@@ -54,6 +54,7 @@ const BOOL_KEYS = [
   "showInPopup",
   "autoTranslate",
   "shortcutEnabled",
+  "stream",
   "debug",
 ] as const satisfies readonly PrefKey[];
 

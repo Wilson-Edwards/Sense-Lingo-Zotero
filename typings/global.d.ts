@@ -39,6 +39,7 @@ declare namespace _ZoteroTypes {
       shortcutEnabled: boolean;
       popupFontSize: number;
       requestTimeoutMs: number;
+      stream: boolean;
       debug: boolean;
     };
   }

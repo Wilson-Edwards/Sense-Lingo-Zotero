@@ -49,6 +49,7 @@ export interface ProviderPrefsInput {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  stream?: boolean;
 }
 
 export interface EffectiveProviderConfig {
@@ -59,6 +60,8 @@ export interface EffectiveProviderConfig {
   temperature: number;
   maxTokens: number;
   timeoutMs: number;
+  /** Ask the provider to stream the answer chunk by chunk. */
+  stream: boolean;
 }
 
 /**
@@ -91,6 +94,7 @@ export function resolveProviderConfig(
       typeof input.timeoutMs === "number" && input.timeoutMs > 0
         ? Math.floor(input.timeoutMs)
         : 30000,
+    stream: input.stream !== false,
   };
 }
 

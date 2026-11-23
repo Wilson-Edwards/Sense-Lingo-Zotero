@@ -9,7 +9,7 @@
   <img alt="Zotero 7" src="https://img.shields.io/badge/Zotero-7-CC2936?style=flat-square&logo=zotero" />
   <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" />
   <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
-  <img alt="Tests 134 passing" src="https://img.shields.io/badge/tests-134%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests 147 passing" src="https://img.shields.io/badge/tests-147%20passing-brightgreen?style=flat-square" />
 </p>
 
 <!-- 发布前建议补一张演示 GIF：放到 docs/images/demo.gif，然后在这里插入
@@ -59,6 +59,7 @@
 | 🎛️ 模型参数可配    | `baseURL`、`model`、`temperature`、`max_tokens`、超时全部可调，切换服务商互不覆盖                         |
 | ⚡ 快捷键结果面板  | `Ctrl/⌘ + Shift + T`：判定类型、模板名、命中原句、模型 · 耗时，可一键切换类型重译、临时改 user 消息、复制 |
 | 🪄 自动翻译        | 选中文本即出译文，无需点击；默认关闭，避免误触发与额外费用                                                |
+| 🌊 流式输出        | 默认开启，译文边生成边显示；可关闭，服务商不支持流式时自动回退，超时按空闲时间计算                        |
 | 🔁 类型可纠正      | 自动判定失误时，面板一键在「词 / 句」间切换并立即重译，只影响本次                                         |
 | 🌐 中英双语界面    | 文案通过 Fluent 本地化，内置 `zh-CN` / `en-US`                                                            |
 
@@ -143,26 +144,27 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 ## 常用配置
 
 设置入口：`编辑 / Edit` → `设置 / Settings` → `Sense Lingo`。
-完整 24 项、服务商隔离机制与 `about:config` 改法见 **[配置项参考](docs/configuration.md)**。
+完整 25 项、服务商隔离机制与 `about:config` 改法见 **[配置项参考](docs/configuration.md)**。
 
-| 设置              | 默认       | 作用                                     |
-| ----------------- | ---------- | ---------------------------------------- |
-| 服务商预设        | `openai`   | `openai` / `deepseek` / `custom`         |
-| API Key           | 空         | 必填，以明文保存在 Zotero prefs          |
-| 接口地址 / 模型   | 空         | 留空即用预设；只写主机名会自动补 `/v1`   |
-| 温度              | `0.3`      | 越低越稳定，翻译建议 0～0.5              |
-| 最大 tokens       | `1024`     | 单次回复上限                             |
-| 判定方式          | `auto`     | `auto` / `alwaysWord` / `alwaysSentence` |
-| 最大词数 / 字符数 | `3` / `40` | 超过则按「句」处理                       |
-| 划词带出所在句    | 开         | 关闭后等同词典式直译                     |
-| 划句带出前后句    | 关         | 开启后会多带前后各一句，token 增加       |
-| 单句上下文上限    | `400`      | 超出截断并在面板提示                     |
-| 弹窗按钮          | 开         | 是否在划词弹窗注入「翻译」按钮           |
-| 自动翻译          | 关         | 选中即翻译，按钮隐藏                     |
-| 快捷键            | 开         | `Ctrl/⌘ + Shift + T`                     |
-| 弹窗字号          | `12`       | 8–32 px                                  |
-| 请求超时          | `30000`    | 毫秒；超时提示重试                       |
-| 调试日志          | 关         | 输出到 `帮助 → 调试输出`                 |
+| 设置              | 默认       | 作用                                       |
+| ----------------- | ---------- | ------------------------------------------ |
+| 服务商预设        | `openai`   | `openai` / `deepseek` / `custom`           |
+| API Key           | 空         | 必填，以明文保存在 Zotero prefs            |
+| 接口地址 / 模型   | 空         | 留空即用预设；只写主机名会自动补 `/v1`     |
+| 温度              | `0.3`      | 越低越稳定，翻译建议 0～0.5                |
+| 最大 tokens       | `1024`     | 单次回复上限                               |
+| 判定方式          | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`   |
+| 最大词数 / 字符数 | `3` / `40` | 超过则按「句」处理                         |
+| 划词带出所在句    | 开         | 关闭后等同词典式直译                       |
+| 划句带出前后句    | 关         | 开启后会多带前后各一句，token 增加         |
+| 单句上下文上限    | `400`      | 超出截断并在面板提示                       |
+| 弹窗按钮          | 开         | 是否在划词弹窗注入「翻译」按钮             |
+| 自动翻译          | 关         | 选中即翻译，按钮隐藏                       |
+| 快捷键            | 开         | `Ctrl/⌘ + Shift + T`                       |
+| 弹窗字号          | `12`       | 8–32 px                                    |
+| 请求超时          | `30000`    | 毫秒；超时提示重试                         |
+| 流式输出          | 开         | 默认开启；边生成边显示，超时按空闲时间计算 |
+| 调试日志          | 关         | 输出到 `帮助 → 调试输出`                   |
 
 > 目标语言 `targetLang` 默认 `zh-CN`，目前未出现在设置页，可在 `about:config` 里修改
 > `extensions.zotero.sense-lingo.targetLang`。
@@ -286,7 +288,7 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 
 ### v0.2 — 好用
 
-- [ ] 流式输出
+- [x] 流式输出（默认开启，可关闭）
 - [ ] 译文一键写入注释 / 笔记
 - [ ] 多套提示词管理（增删改、导入导出）
 - [ ] 请求缓存（同一词在同一句只请求一次）
@@ -315,7 +317,7 @@ npm install
 | -------------------- | ---------------------------------------------------- |
 | `npm start`          | 启动开发实例（先按 `.env.example` 配置 Zotero 路径） |
 | `npm run build`      | 打包 + 类型检查，产出 `sense-lingo.xpi`              |
-| `npm test`           | Vitest 单元测试（10 个文件 / 134 个用例）            |
+| `npm test`           | Vitest 单元测试（11 个文件 / 147 个用例）            |
 | `npm run typecheck`  | `tsc --noEmit`                                       |
 | `npm run lint:check` | Prettier + ESLint                                    |
 

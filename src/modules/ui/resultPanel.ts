@@ -251,8 +251,11 @@ export class ResultPanel {
     );
 
     if (status === "loading") {
-      this.body.textContent = getString("panel-loading");
-      this.body.style.color = "#666";
+      // Streaming fills `translation` while the request is still open; show it
+      // instead of the placeholder so the text grows in place.
+      const partial = this.state.translation ?? "";
+      this.body.textContent = partial || getString("panel-loading");
+      this.body.style.color = partial ? "#1a1a1a" : "#666";
     } else if (status === "error") {
       this.body.textContent =
         this.state.errorMessage || getString("error-generic");

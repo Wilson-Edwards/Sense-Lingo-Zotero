@@ -35,4 +35,5 @@ pref("autoTranslate", false);
 pref("shortcutEnabled", true);
 pref("popupFontSize", 12);
 pref("requestTimeoutMs", 30000);
+pref("stream", true);
 pref("debug", false);

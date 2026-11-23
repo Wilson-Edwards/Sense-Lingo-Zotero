@@ -10,7 +10,7 @@
   <img alt="Zotero 7" src="https://img.shields.io/badge/Zotero-7-CC2936?style=flat-square&logo=zotero" />
   <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" />
   <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" />
-  <img alt="Tests 134 passing" src="https://img.shields.io/badge/tests-134%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests 147 passing" src="https://img.shields.io/badge/tests-147%20passing-brightgreen?style=flat-square" />
 </p>
 
 <!-- Before publishing, add a demo GIF: docs/images/demo.gif
@@ -69,6 +69,7 @@ for changing it._
 | 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                   |
 | ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.     |
 | 🪄 Auto-translate              | Translate as soon as text is selected; off by default to avoid accidental cost.                                                     |
+| 🌊 Streaming                   | On by default; the translation appears while it is generated. Can be turned off; falls back automatically with idle-based timeout.  |
 | 🔁 Correctable kind            | One click to switch between “word” and “sentence” and re-translate; applies to this request only.                                   |
 | 🌐 Bilingual UI                | Fluent-localized strings, shipping `zh-CN` and `en-US`.                                                                             |
 
@@ -161,28 +162,29 @@ Press `Ctrl/⌘ + Shift + T` for the full result panel:
 
 ## Configuration
 
-Settings live under `Edit` → `Settings` → `Sense Lingo`. The full 24-key reference, provider
+Settings live under `Edit` → `Settings` → `Sense Lingo`. The full 25-key reference, provider
 isolation and `about:config` recipes are in
 **[the configuration reference](docs/configuration.md)** (Chinese).
 
-| Setting             | Default    | Purpose                                                       |
-| ------------------- | ---------- | ------------------------------------------------------------- |
-| Provider preset     | `openai`   | `openai` / `deepseek` / `custom`                              |
-| API Key             | empty      | Required; stored in plain text in Zotero prefs                |
-| Base URL / Model    | empty      | Blank = preset; a bare host gets `/v1` appended automatically |
-| Temperature         | `0.3`      | Lower is more stable; 0–0.5 is recommended for translation    |
-| Max tokens          | `1024`     | Upper bound for one response                                  |
-| Kind detection mode | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`                      |
-| Max words / chars   | `3` / `40` | Above these, a selection is treated as a sentence             |
-| Word mode context   | on         | Off = dictionary-style lookup without the containing sentence |
-| Sentence neighbours | off        | Adds one sentence before and after (more tokens)              |
-| Max sentence chars  | `400`      | Context is truncated beyond this, and the panel says so       |
-| Popup button        | on         | Inject the “Translate” button into the selection popup        |
-| Auto-translate      | off        | Translate on selection and hide the button                    |
-| Shortcut            | on         | `Ctrl/⌘ + Shift + T`                                          |
-| Popup font size     | `12`       | 8–32 px                                                       |
-| Request timeout     | `30000`    | Milliseconds; timeouts surface a retry hint                   |
-| Debug logging       | off        | Writes details to `Help → Debug Output Logging`               |
+| Setting             | Default    | Purpose                                                                  |
+| ------------------- | ---------- | ------------------------------------------------------------------------ |
+| Provider preset     | `openai`   | `openai` / `deepseek` / `custom`                                         |
+| API Key             | empty      | Required; stored in plain text in Zotero prefs                           |
+| Base URL / Model    | empty      | Blank = preset; a bare host gets `/v1` appended automatically            |
+| Temperature         | `0.3`      | Lower is more stable; 0–0.5 is recommended for translation               |
+| Max tokens          | `1024`     | Upper bound for one response                                             |
+| Kind detection mode | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`                                 |
+| Max words / chars   | `3` / `40` | Above these, a selection is treated as a sentence                        |
+| Word mode context   | on         | Off = dictionary-style lookup without the containing sentence            |
+| Sentence neighbours | off        | Adds one sentence before and after (more tokens)                         |
+| Max sentence chars  | `400`      | Context is truncated beyond this, and the panel says so                  |
+| Popup button        | on         | Inject the “Translate” button into the selection popup                   |
+| Auto-translate      | off        | Translate on selection and hide the button                               |
+| Shortcut            | on         | `Ctrl/⌘ + Shift + T`                                                     |
+| Popup font size     | `12`       | 8–32 px                                                                  |
+| Request timeout     | `30000`    | Milliseconds; timeouts surface a retry hint                              |
+| Streaming           | on         | On by default; text appears as it is generated, timeout counts idle time |
+| Debug logging       | off        | Writes details to `Help → Debug Output Logging`                          |
 
 > `targetLang` defaults to `zh-CN` and is not exposed in the settings pane yet. Change it via
 > `about:config`: `extensions.zotero.sense-lingo.targetLang`.
@@ -323,7 +325,7 @@ All 15 limitations plus per-symptom fixes: **[troubleshooting](docs/troubleshoot
 
 ### v0.2 — nicer to use
 
-- [ ] Streaming output
+- [x] Streaming output (on by default, can be turned off)
 - [ ] One-click write translation into annotations / notes
 - [ ] Prompt library management (add / edit / import / export)
 - [ ] Request cache (same word in the same sentence asks once)
@@ -352,7 +354,7 @@ npm install
 | -------------------- | --------------------------------------------------------------- |
 | `npm start`          | Start a dev instance (configure Zotero path via `.env.example`) |
 | `npm run build`      | Build + type-check, producing `sense-lingo.xpi`                 |
-| `npm test`           | Vitest unit tests (10 files / 134 cases)                        |
+| `npm test`           | Vitest unit tests (11 files / 147 cases)                        |
 | `npm run typecheck`  | `tsc --noEmit`                                                  |
 | `npm run lint:check` | Prettier + ESLint                                               |
 

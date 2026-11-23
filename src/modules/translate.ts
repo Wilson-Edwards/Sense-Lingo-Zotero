@@ -72,6 +72,7 @@ export function readSettings(): PluginSettings {
       temperature: readTemperature(),
       maxTokens: getNumberPref("maxTokens", 1024),
       timeoutMs: getNumberPref("requestTimeoutMs", 30000),
+      stream: getBooleanPref("stream", true),
     }),
     targetLang: getStringPref("targetLang", "zh-CN") || "zh-CN",
     sourceLang: getStringPref("sourceLang", "auto") || "auto",
@@ -124,6 +125,12 @@ export interface TranslateInput {
   kindOverride?: SelectionKind;
   /** Replace the rendered user prompt, for the panel's "edit prompt" flow. */
   userPromptOverride?: string;
+  /**
+   * Progressive output. Called with the translation assembled so far every time
+   * the model streams a chunk; not called when `stream` is off. The text is
+   * already normalized exactly like the final `TranslateResult.translation`.
+   */
+  onDelta?: (partialTranslation: string) => void;
 }
 
 export interface TranslateResult {
@@ -256,19 +263,28 @@ export async function translate(
     sentence: context?.sentence?.slice(0, 100) ?? "",
   });
 
+  const formatTranslation = (raw: string): string =>
+    kind === "word" ? normalizeWordTranslation(raw) : raw;
+
+  // Streaming reuses the same formatting so the partial text shown in the UI
+  // does not jump when the final, normalized result arrives.
+  let streamedRaw = "";
   const response = await chatCompletion({
     config: settings.provider,
     messages: [
       { role: "system", content: rendered.system },
       { role: "user", content: userPrompt },
     ],
+    onDelta: input.onDelta
+      ? (delta) => {
+          streamedRaw += delta;
+          input.onDelta?.(formatTranslation(streamedRaw));
+        }
+      : undefined,
   });
 
   return {
-    translation:
-      kind === "word"
-        ? normalizeWordTranslation(response.content)
-        : response.content,
+    translation: formatTranslation(response.content),
     kind,
     profileId: rendered.profileId,
     profileName: rendered.profileName,
