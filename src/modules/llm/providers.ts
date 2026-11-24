@@ -40,6 +40,15 @@ export interface ProviderPreset {
    * verified one slug at a time against a live subscription.
    */
   fallbackModels?: readonly string[];
+  /**
+   * Whether the gateway accepts a request field that turns the model's
+   * reasoning off (`reasoning: { enabled: false }`).
+   *
+   * Verified against the live Cline API, which is why only ClinePass sets it:
+   * openai.com rejects unknown top-level parameters, and an OpenAI-compatible
+   * gateway cannot be probed from here.
+   */
+  supportsDisableThinking?: boolean;
 }
 
 /**
@@ -90,6 +99,10 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     modelsPath: "/models",
     modelPrefix: "cline-pass/",
     fallbackModels: CLINE_PASS_MODELS,
+    // `reasoning: { enabled: false }` really stops the thinking phase for the
+    // Qwen and Kimi slugs; DeepSeek and GLM keep thinking regardless, and a
+    // reasoning-mandatory model is retried without the hint (see client.ts).
+    supportsDisableThinking: true,
   },
   custom: {
     id: "custom",
@@ -166,6 +179,8 @@ export interface ProviderPrefsInput {
   maxTokens?: number;
   timeoutMs?: number;
   stream?: boolean;
+  /** Ask the gateway to skip the reasoning phase; only supported presets act on it. */
+  disableThinking?: boolean;
 }
 
 export interface EffectiveProviderConfig {
@@ -186,6 +201,12 @@ export interface EffectiveProviderConfig {
   timeoutMs: number;
   /** Ask the provider to stream the answer chunk by chunk. */
   stream: boolean;
+  /**
+   * Ask the gateway to skip the reasoning phase. Always `false` for a preset
+   * that does not declare `supportsDisableThinking`, so the field can never
+   * break a provider that would reject it.
+   */
+  disableThinking: boolean;
 }
 
 /**
@@ -223,7 +244,15 @@ export function resolveProviderConfig(
         ? Math.floor(input.timeoutMs)
         : 30000,
     stream: input.stream !== false,
+    disableThinking:
+      Boolean(preset.supportsDisableThinking) &&
+      input.disableThinking !== false,
   };
+}
+
+/** Whether the settings pane can offer the "disable thinking" switch here. */
+export function canDisableThinking(provider: ProviderId): boolean {
+  return Boolean(PROVIDERS[provider].supportsDisableThinking);
 }
 
 /** A key is required for every provider, `custom` included. */

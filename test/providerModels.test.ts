@@ -10,6 +10,7 @@ import {
 import {
   CLINE_PASS_MODELS,
   PROVIDERS,
+  canDisableThinking,
   modelChoices,
   normalizeModelId,
   normalizeProviderId,
@@ -118,6 +119,33 @@ describe("modelChoices", () => {
   it("does not duplicate a listed or blank value", () => {
     expect(modelChoices(["a", "a"], "a")).toEqual(["", "a"]);
     expect(modelChoices(["a", ""], "  ")).toEqual(["", "a"]);
+  });
+});
+
+describe("disableThinking", () => {
+  it("defaults to on for ClinePass and off for presets that reject the field", () => {
+    expect(
+      resolveProviderConfig({ provider: "clinepass" }).disableThinking,
+    ).toBe(true);
+    expect(
+      resolveProviderConfig({ provider: "clinepass", disableThinking: false })
+        .disableThinking,
+    ).toBe(false);
+    // openai.com rejects unknown top-level parameters, so the flag is inert.
+    expect(
+      resolveProviderConfig({ provider: "openai", disableThinking: true })
+        .disableThinking,
+    ).toBe(false);
+    expect(resolveProviderConfig({ provider: "custom" }).disableThinking).toBe(
+      false,
+    );
+  });
+
+  it("exposes which presets support the switch", () => {
+    expect(canDisableThinking("clinepass")).toBe(true);
+    expect(canDisableThinking("openai")).toBe(false);
+    expect(canDisableThinking("deepseek")).toBe(false);
+    expect(canDisableThinking("custom")).toBe(false);
   });
 });
 

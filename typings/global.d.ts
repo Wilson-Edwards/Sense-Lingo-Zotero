@@ -40,6 +40,7 @@ declare namespace _ZoteroTypes {
       popupFontSize: number;
       requestTimeoutMs: number;
       stream: boolean;
+      disableThinking: boolean;
       debug: boolean;
     };
   }

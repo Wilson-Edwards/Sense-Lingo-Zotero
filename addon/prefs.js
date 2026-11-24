@@ -37,4 +37,6 @@ pref("shortcutEnabled", true);
 pref("popupFontSize", 12);
 pref("requestTimeoutMs", 30000);
 pref("stream", true);
+// Ask the gateway to skip the model's reasoning phase (ClinePass only).
+pref("disableThinking", true);
 pref("debug", false);

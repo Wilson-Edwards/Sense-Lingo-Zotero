@@ -16,6 +16,8 @@ pref-model-status-failed = 获取模型失败：{ $error }
 pref-model-status-need-key = 请先填写 API Key
 pref-temperature = 温度
 pref-max-tokens = 最大 tokens
+pref-disable-thinking = 禁止思考（不生成推理过程，更快、更省额度；默认开启）
+pref-disable-thinking-unsupported = 当前服务商不支持该开关（仅 ClinePass 实测生效），切回 ClinePass 后可用。
 
 pref-head-kind = 选区类型
 pref-kind-mode = 判定方式

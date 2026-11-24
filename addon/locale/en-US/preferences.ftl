@@ -16,6 +16,8 @@ pref-model-status-failed = Could not fetch models: { $error }
 pref-model-status-need-key = Enter the API key first
 pref-temperature = Temperature
 pref-max-tokens = Max tokens
+pref-disable-thinking = Disable thinking (skip the reasoning phase — faster and cheaper; on by default)
+pref-disable-thinking-unsupported = This provider does not support the switch (only ClinePass is verified); switch back to ClinePass to use it.
 
 pref-head-kind = Selection kind
 pref-kind-mode = Detection mode

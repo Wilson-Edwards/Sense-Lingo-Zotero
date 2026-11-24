@@ -73,6 +73,7 @@ export function readSettings(): PluginSettings {
       maxTokens: getNumberPref("maxTokens", 1024),
       timeoutMs: getNumberPref("requestTimeoutMs", 30000),
       stream: getBooleanPref("stream", true),
+      disableThinking: getBooleanPref("disableThinking", true),
     }),
     targetLang: getStringPref("targetLang", "zh-CN") || "zh-CN",
     sourceLang: getStringPref("sourceLang", "auto") || "auto",

@@ -14,9 +14,10 @@ import {
   PROVIDER_FIELD_KEYS,
   PROVIDER_IDS,
   PROVIDERS,
+  canDisableThinking,
+  modelChoices,
   normalizeModelId,
   normalizeProviderId,
-  modelChoices,
   parseProviderCredentials,
   presetModelIds,
   resolveProviderConfig,
@@ -71,6 +72,7 @@ const BOOL_KEYS = [
   "autoTranslate",
   "shortcutEnabled",
   "stream",
+  "disableThinking",
   "debug",
 ] as const satisfies readonly PrefKey[];
 
@@ -153,6 +155,7 @@ function syncFromPrefs(win: Window): void {
 
   syncPromptTemplates(win);
   updatePlaceholders(win);
+  updateThinkingToggle(win);
 }
 
 /** Show the preset values as placeholders so "blank = preset" is discoverable. */
@@ -166,6 +169,28 @@ function updatePlaceholders(win: Window): void {
   const model = byId<HTMLInputElement>(win, "model");
   if (model) {
     model.placeholder = preset.model || "model-name";
+  }
+}
+
+/**
+ * Gate the "disable thinking" switch on the preset.
+ *
+ * The request field it controls is only accepted by some gateways, so an
+ * unsupported preset keeps the box disabled instead of silently sending
+ * something that would be rejected.
+ */
+function updateThinkingToggle(win: Window): void {
+  const provider = normalizeProviderId(getPref("provider"));
+  const supported = canDisableThinking(provider);
+  const input = byId<HTMLInputElement>(win, "disableThinking");
+  if (input) {
+    input.disabled = !supported;
+  }
+  const hint = byId<HTMLElement>(win, "thinking-hint");
+  if (hint) {
+    hint.textContent = supported
+      ? ""
+      : getString("pref-disable-thinking-unsupported");
   }
 }
 
@@ -596,6 +621,7 @@ function bindEvents(win: Window): void {
   providerSelect?.addEventListener("change", () => {
     switchProvider(win, normalizeProviderId(providerSelect.value));
     updatePlaceholders(win);
+    updateThinkingToggle(win);
     seedModelOptions(win);
     maybeAutoFetchModelOptions(win);
   });

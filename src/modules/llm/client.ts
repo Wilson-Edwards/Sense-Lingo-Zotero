@@ -506,6 +506,43 @@ export interface ChatResult {
 }
 
 /**
+ * Body fragment that asks a gateway to skip the reasoning phase.
+ *
+ * Measured against the live Cline API: Qwen and Kimi stop emitting reasoning
+ * tokens entirely, DeepSeek and GLM ignore it, and a model that mandates
+ * reasoning answers `400 Reasoning is mandatory…` — which is why
+ * `chatCompletion` retries once without this fragment.
+ */
+const NO_THINKING_FRAGMENT = { reasoning: { enabled: false } } as const;
+
+/**
+ * Models that answered "reasoning is mandatory" once, keyed by
+ * `baseURL|model`. Remembering them keeps later translations from paying the
+ * doomed first round trip.
+ */
+const thinkingMandatory = new Set<string>();
+
+/** Test seam: forget which models refuse the "no thinking" hint. */
+export function resetThinkingSupportCache(): void {
+  thinkingMandatory.clear();
+}
+
+function thinkingHintKey(config: { baseURL: string; model: string }): string {
+  return `${config.baseURL}|${config.model}`;
+}
+
+function isReasoningMandatory(error: unknown): boolean {
+  if (!(error instanceof LlmError)) {
+    return false;
+  }
+  const detail = `${error.detail ?? ""} ${error.message}`.toLowerCase();
+  return (
+    detail.includes("reasoning is mandatory") ||
+    detail.includes("reasoning cannot be disabled")
+  );
+}
+
+/**
  * Run one chat completion, streaming when `config.stream` is on.
  *
  * Every failure is normalized into an `LlmError` with a stable `code` so the UI
@@ -553,18 +590,34 @@ export async function chatCompletion(
     }
     timer = setTimeout(() => controller.abort(), timeoutMs);
   };
-  armTimeout();
 
-  const startedAt = Date.now();
-  try {
-    log(
-      "request",
-      config.provider,
-      config.model,
-      config.stream ? "stream" : "buffered",
-      `via ${apis?.label ?? "injected fetch"}`,
-      controller ? "" : "(no timeout)",
-    );
+  const hintKey = thinkingHintKey(config);
+  // A model that already refused the hint must not be asked again.
+  const skipThinking =
+    config.disableThinking && !thinkingMandatory.has(hintKey);
+  /** Set once a chunk reached the UI: a retry would duplicate that text. */
+  let streamed = false;
+  const onDelta = options.onDelta
+    ? (delta: string) => {
+        streamed = true;
+        options.onDelta?.(delta);
+      }
+    : undefined;
+
+  const attempt = async (withHint: boolean): Promise<ChatResult> => {
+    armTimeout();
+    const startedAt = Date.now();
+    const body: Record<string, unknown> = {
+      model: config.model,
+      messages,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      stream: config.stream,
+    };
+    if (withHint) {
+      Object.assign(body, NO_THINKING_FRAGMENT);
+    }
+
     const response = await doFetch(endpoint, {
       method: "POST",
       headers: {
@@ -572,13 +625,7 @@ export async function chatCompletion(
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        stream: config.stream,
-      }),
+      body: JSON.stringify(body),
       signal: controller?.signal,
     });
 
@@ -598,7 +645,7 @@ export async function chatCompletion(
     }
 
     const parsed = config.stream
-      ? await readStreamedResponse(response, options.onDelta, armTimeout, apis)
+      ? await readStreamedResponse(response, onDelta, armTimeout, apis)
       : parseChatCompletion(parseJsonBody(await response.text()));
     const content = parsed.content.trim();
     if (!content) {
@@ -609,6 +656,32 @@ export async function chatCompletion(
       model: parsed.model || config.model,
       elapsedMs: Date.now() - startedAt,
     };
+  };
+
+  armTimeout();
+  try {
+    log(
+      "request",
+      config.provider,
+      config.model,
+      config.stream ? "stream" : "buffered",
+      skipThinking ? "no-thinking" : "",
+      `via ${apis?.label ?? "injected fetch"}`,
+      controller ? "" : "(no timeout)",
+    );
+    try {
+      return await attempt(skipThinking);
+    } catch (error) {
+      // Some models cannot turn reasoning off at all. Retry once without the
+      // hint instead of failing the translation, and remember the model so the
+      // next request goes straight to the working body.
+      if (!skipThinking || streamed || !isReasoningMandatory(error)) {
+        throw error;
+      }
+      thinkingMandatory.add(hintKey);
+      warn("model requires reasoning, retrying without the hint", config.model);
+      return await attempt(false);
+    }
   } catch (error) {
     if (error instanceof LlmError) {
       throw error;

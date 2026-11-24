@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LlmError, chatCompletion } from "../src/modules/llm/client";
+import {
+  LlmError,
+  chatCompletion,
+  resetThinkingSupportCache,
+} from "../src/modules/llm/client";
 import {
   isConfigured,
   normalizeProviderId,
@@ -29,6 +33,127 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+describe("disableThinking in requests", () => {
+  const clineConfig = {
+    ...resolveProviderConfig({
+      provider: "clinepass",
+      apiKey: "sk-test",
+    }),
+    stream: false,
+  };
+
+  it("adds reasoning.enabled=false when the box is on (default)", async () => {
+    resetThinkingSupportCache();
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "译文" } }] }),
+    );
+    await chatCompletion({
+      messages,
+      config: clineConfig,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    const body = JSON.parse(String(init.body));
+    expect(body.reasoning).toEqual({ enabled: false });
+    expect(body.model).toBe("cline-pass/deepseek-v4.1-flash");
+  });
+
+  it("omits the field when the box is off", async () => {
+    resetThinkingSupportCache();
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "译文" } }] }),
+    );
+    await chatCompletion({
+      messages,
+      config: {
+        ...resolveProviderConfig({
+          provider: "clinepass",
+          apiKey: "sk-test",
+          disableThinking: false,
+        }),
+        stream: false,
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(String(init.body)).reasoning).toBeUndefined();
+  });
+
+  it("never sends the field to a preset that would reject it", async () => {
+    resetThinkingSupportCache();
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "译文" } }] }),
+    );
+    await chatCompletion({
+      messages,
+      config,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(String(init.body)).reasoning).toBeUndefined();
+  });
+
+  it("retries without the hint when the model mandates reasoning", async () => {
+    resetThinkingSupportCache();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error:
+              "inference request failed: failed to invoke model 'meta/muse-spark': " +
+              'request failed with status 400: {"error":{"message":"Reasoning is mandatory for this endpoint and cannot be disabled."}}',
+          },
+          500,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: "译文" } }] }),
+      );
+    const museConfig = {
+      ...resolveProviderConfig({
+        provider: "clinepass",
+        apiKey: "sk-test",
+        model: "cline-pass/muse-spark-1.3-contributor",
+      }),
+      stream: false,
+    };
+
+    const result = await chatCompletion({
+      messages,
+      config: museConfig,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.content).toBe("译文");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const second = fetchImpl.mock.calls[1] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(second[1].body)).reasoning).toBeUndefined();
+
+    // The model is remembered, so the next request skips the doomed attempt.
+    const again = vi.fn(async () =>
+      jsonResponse({ choices: [{ message: { content: "再译" } }] }),
+    );
+    await chatCompletion({
+      messages,
+      config: museConfig,
+      fetchImpl: again as unknown as typeof fetch,
+    });
+    expect(again).toHaveBeenCalledTimes(1);
+    const [url, init] = again.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.cline.bot/api/v1/chat/completions");
+    expect(JSON.parse(String(init.body)).reasoning).toBeUndefined();
+  });
+});
 
 describe("chatCompletion", () => {
   it("returns the translated content and sends the expected request", async () => {

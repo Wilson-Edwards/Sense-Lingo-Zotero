@@ -24,33 +24,34 @@
 
 ## 完整配置表
 
-| 键                         | 类型         | 默认值     | 设置页 | 说明                                                                                                  |
-| -------------------------- | ------------ | ---------- | ------ | ----------------------------------------------------------------------------------------------------- |
-| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `clinepass` / `custom`                                            |
-| `apiKey`                   | string       | `""`       | ✅     | API Key。以**明文**保存在 prefs 中，见 [隐私与安全](../README.zh-CN.md#隐私与安全)                    |
-| `baseURL`                  | string       | `""`       | ✅     | 接口地址；留空使用预设。只写主机名时自动补 `/v1`，末尾斜杠会被去掉                                    |
-| `model`                    | string       | `""`       | ✅     | 模型名，如 `gpt-4o-mini` / `deepseek-chat` / `cline-pass/glm-5.3`；留空使用预设，可点「获取模型」拉取 |
-| `providerConfigs`          | string(JSON) | `""`       | —      | 按服务商分别保存的 `apiKey` / `baseURL` / `model`，切换预设时自动写入 / 读出                          |
-| `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                        |
-| `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                          |
-| `targetLang`               | string       | `zh-CN`    | —      | 目标语言，原样替换进提示词的 `{targetLang}`                                                           |
-| `sourceLang`               | string       | `auto`     | —      | 源语言，只用于 `{sourceLang}` 变量；默认模板不引用它，由模型自行判断                                  |
-| `selectionKindMode`        | string       | `auto`     | ✅     | 选区类型判定：`auto` 自动 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                         |
-| `wordMaxWords`             | number       | `3`        | ✅     | 判为「词」的最大词数，超出按句处理                                                                    |
-| `wordMaxChars`             | number       | `40`       | ✅     | 判为「词」的最大字符数，超出按句处理                                                                  |
-| `useContext`               | boolean      | `true`     | ✅     | **仅划词**：是否带出所在句；关闭后等同词典式直译                                                      |
-| `sentenceContextNeighbors` | boolean      | `false`    | ✅     | **仅划句**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                  |
-| `maxSentenceChars`         | number       | `400`      | ✅     | 单句上下文长度上限，超出截断并在面板提示                                                              |
-| `promptProfileWord`        | string       | `word`     | ✅     | 划词**当前使用的模板 id**；指向已删除 / 不存在的 id 时回退同类型模板，再回退内置 `word`               |
-| `promptProfileSentence`    | string       | `sentence` | ✅     | 划句**当前使用的模板 id**（同上，回退内置 `sentence`）                                                |
-| `promptProfiles`           | string(JSON) | `""`       | ✅\*   | 提示词库：任意 id 的 `{ name, kind, system, user }`，设置页负责增删改，详见 [提示词](prompts.md)      |
-| `showInPopup`              | boolean      | `true`     | ✅     | 是否在划词弹窗中注入「翻译」按钮                                                                      |
-| `autoTranslate`            | boolean      | `false`    | ✅     | 选中文本后自动翻译，译文直接显示在弹窗内；开启后不再显示按钮；未配置 API Key 时静默跳过               |
-| `shortcutEnabled`          | boolean      | `true`     | ✅     | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                   |
-| `popupFontSize`            | number       | `12`       | ✅     | 弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽                                               |
-| `requestTimeoutMs`         | number       | `30000`    | ✅     | 请求超时（毫秒）；超时会提示重试而不是静默失败                                                        |
-| `stream`                   | boolean      | `true`     | ✅     | 流式输出（默认开启）：请求带 `stream: true`，译文边生成边显示；超时按「空闲」重新计时                 |
-| `debug`                    | boolean      | `false`    | ✅     | 输出详细日志到 Zotero `帮助 → 调试输出`                                                               |
+| 键                         | 类型         | 默认值     | 设置页 | 说明                                                                                                    |
+| -------------------------- | ------------ | ---------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `clinepass` / `custom`                                              |
+| `apiKey`                   | string       | `""`       | ✅     | API Key。以**明文**保存在 prefs 中，见 [隐私与安全](../README.zh-CN.md#隐私与安全)                      |
+| `baseURL`                  | string       | `""`       | ✅     | 接口地址；留空使用预设。只写主机名时自动补 `/v1`，末尾斜杠会被去掉                                      |
+| `model`                    | string       | `""`       | ✅     | 模型名，如 `gpt-4o-mini` / `deepseek-chat` / `cline-pass/glm-5.3`；留空使用预设，可点「获取模型」拉取   |
+| `providerConfigs`          | string(JSON) | `""`       | —      | 按服务商分别保存的 `apiKey` / `baseURL` / `model`，切换预设时自动写入 / 读出                            |
+| `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                          |
+| `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                            |
+| `disableThinking`          | boolean      | `true`     | ✅     | **禁止思考**：请求里带 `reasoning: { enabled: false }`。仅 ClinePass 预设生效（其余预设不会发送该字段） |
+| `targetLang`               | string       | `zh-CN`    | —      | 目标语言，原样替换进提示词的 `{targetLang}`                                                             |
+| `sourceLang`               | string       | `auto`     | —      | 源语言，只用于 `{sourceLang}` 变量；默认模板不引用它，由模型自行判断                                    |
+| `selectionKindMode`        | string       | `auto`     | ✅     | 选区类型判定：`auto` 自动 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                           |
+| `wordMaxWords`             | number       | `3`        | ✅     | 判为「词」的最大词数，超出按句处理                                                                      |
+| `wordMaxChars`             | number       | `40`       | ✅     | 判为「词」的最大字符数，超出按句处理                                                                    |
+| `useContext`               | boolean      | `true`     | ✅     | **仅划词**：是否带出所在句；关闭后等同词典式直译                                                        |
+| `sentenceContextNeighbors` | boolean      | `false`    | ✅     | **仅划句**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                    |
+| `maxSentenceChars`         | number       | `400`      | ✅     | 单句上下文长度上限，超出截断并在面板提示                                                                |
+| `promptProfileWord`        | string       | `word`     | ✅     | 划词**当前使用的模板 id**；指向已删除 / 不存在的 id 时回退同类型模板，再回退内置 `word`                 |
+| `promptProfileSentence`    | string       | `sentence` | ✅     | 划句**当前使用的模板 id**（同上，回退内置 `sentence`）                                                  |
+| `promptProfiles`           | string(JSON) | `""`       | ✅\*   | 提示词库：任意 id 的 `{ name, kind, system, user }`，设置页负责增删改，详见 [提示词](prompts.md)        |
+| `showInPopup`              | boolean      | `true`     | ✅     | 是否在划词弹窗中注入「翻译」按钮                                                                        |
+| `autoTranslate`            | boolean      | `false`    | ✅     | 选中文本后自动翻译，译文直接显示在弹窗内；开启后不再显示按钮；未配置 API Key 时静默跳过                 |
+| `shortcutEnabled`          | boolean      | `true`     | ✅     | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                     |
+| `popupFontSize`            | number       | `12`       | ✅     | 弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽                                                 |
+| `requestTimeoutMs`         | number       | `30000`    | ✅     | 请求超时（毫秒）；超时会提示重试而不是静默失败                                                          |
+| `stream`                   | boolean      | `true`     | ✅     | 流式输出（默认开启）：请求带 `stream: true`，译文边生成边显示；超时按「空闲」重新计时                   |
+| `debug`                    | boolean      | `false`    | ✅     | 输出详细日志到 Zotero `帮助 → 调试输出`                                                                 |
 
 \* `promptProfiles` 不直接呈现为输入框，而是由设置页的模板编辑器读写；它存整个提示词库，
 `promptProfileWord` / `promptProfileSentence` 只记录每种类型当前选中的模板 id。
@@ -99,6 +100,32 @@ ClinePass 预设内置的 10 个模型（均为真实 Key 实测跑通，剩下�
 | `cline-pass/minimax-m3.1-flash`         | 轻量                                 |
 | `cline-pass/muse-spark-1.3-contributor` | 带 reasoning，需要更大的 `maxTokens` |
 | `cline-pass/qwen3.8-max`                | 最强也最贵                           |
+
+### 禁止思考
+
+设置页的 **禁止思考** 默认勾选。开启后请求体多一个字段：
+
+```json
+{ "reasoning": { "enabled": false } }
+```
+
+- **只有 ClinePass 预设会发送该字段**。openai.com 会拒绝未知的顶层参数，OpenAI 兼容网关
+  也无法预判，所以其他预设即便勾着也不会带；切到它们时设置页的复选框会置灰并给出提示。
+- 用同一个 “Reply with exactly: ok” 请求实测（ClinePass，思考 token 数）：
+
+  | 模型                                    | 关思考 | 开思考   | 结果                                                                              |
+  | --------------------------------------- | ------ | -------- | --------------------------------------------------------------------------------- |
+  | `cline-pass/qwen3.8-max`                | 0      | 20       | 生效                                                                              |
+  | `cline-pass/kimi-k3`                    | 0      | 35       | 生效（实测 1.5s → 流式 0.7s 就出结果）                                            |
+  | `cline-pass/minimax-m3.1-flash`         | 0      | 0        | 本来不思考                                                                        |
+  | `cline-pass/deepseek-v4.1-flash`        | 16     | 17       | 上游忽略该字段                                                                    |
+  | `cline-pass/deepseek-v4-pro`            | 23     | 24       | 上游忽略该字段                                                                    |
+  | `cline-pass/glm-5.3`                    | 12     | 12       | 上游忽略该字段                                                                    |
+  | `cline-pass/muse-spark-1.3-contributor` | —      | 强制推理 | 网关回 `400 Reasoning is mandatory`，插件自动去掉该字段重试一次，之后记住不再重试 |
+
+  另外试过但**不能用**的参数：`reasoning.max_tokens = 0`、`thinking: { type: "disabled" }`
+  会直接报错或返回空内容；`chat_template_kwargs.enable_thinking`、`thinking_budget`
+  会被忽略；`reasoning.effort = "minimal"` 只能减少不能关闭。
 
 ## 服务商之间的隔离
 
