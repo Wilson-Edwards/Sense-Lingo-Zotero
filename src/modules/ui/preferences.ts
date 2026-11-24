@@ -16,7 +16,9 @@ import {
   PROVIDERS,
   normalizeModelId,
   normalizeProviderId,
+  modelChoices,
   parseProviderCredentials,
+  presetModelIds,
   resolveProviderConfig,
   serializeProviderCredentials,
   switchProviderCredentials,
@@ -197,22 +199,68 @@ function setModelStatus(win: Window, message: string): void {
   }
 }
 
-/** Drop suggestions from the previous provider so they cannot be picked. */
-function clearModelOptions(win: Window): void {
-  const list = byId<HTMLElement>(win, "modelOptions");
-  if (list) {
-    list.textContent = "";
+/** Model ids the dropdown currently offers, kept per pane window. */
+const modelListState = new WeakMap<Window, string[]>();
+
+/**
+ * Draw the model dropdown from the offered ids.
+ *
+ * `<datalist>` is never rendered in Zotero's XUL-hosted preferences document,
+ * so the choices are real `<option>`s: the first one is the empty value, which
+ * means "use the preset model" (exactly what a blank `model` pref does), the
+ * rest are model ids, and a hand-typed id is appended so the two controls never
+ * disagree. The text field below stays free-form for models the list lacks.
+ */
+function renderModelSelect(win: Window): void {
+  const select = byId<HTMLSelectElement>(win, "modelSelect");
+  if (!select) {
+    return;
   }
+  const provider = normalizeProviderId(getPref("provider"));
+  const current = byId<HTMLInputElement>(win, "model")?.value.trim() ?? "";
+  select.textContent = "";
+  addOption(
+    win,
+    select,
+    "",
+    getString("pref-model-use-preset", {
+      model: PROVIDERS[provider].model || "-",
+    }),
+  );
+  for (const id of modelChoices(modelListState.get(win) ?? [], current)) {
+    if (id) {
+      addOption(win, select, id, id);
+    }
+  }
+  select.value = current;
+}
+
+/** Offer `ids` in the dropdown, keeping the value in the text field. */
+function setModelOptions(win: Window, ids: readonly string[]): void {
+  modelListState.set(win, [...ids]);
+  renderModelSelect(win);
+}
+
+/**
+ * Reset the dropdown to the preset's own models.
+ *
+ * ClinePass publishes no catalogue endpoint for its subscription aliases, so
+ * this list is the only source there; seeding it means the pane is usable
+ * before the first request (and before a key is entered). Switching presets
+ * re-seeds, so another provider's models cannot be picked.
+ */
+function seedModelOptions(win: Window): void {
+  const provider = normalizeProviderId(getPref("provider"));
+  setModelOptions(win, presetModelIds(provider));
   setModelStatus(win, "");
 }
 
 /**
- * Ask the provider for its model list and offer the ids as suggestions.
+ * Ask the provider for its model list and offer the ids as choices.
  *
- * The list is a `<datalist>`, so the input stays free text: a model that the
- * catalogue omits (or a gateway that does not implement `/models`) can still
- * be typed by hand. ClinePass only answers with a valid key, which is why the
- * button reports that instead of failing silently.
+ * ClinePass answers on the shared catalogue, which carries none of its
+ * `cline-pass/...` aliases, so the result collapses back to the preset list;
+ * the status line reports what was actually offered.
  */
 async function loadModelOptions(win: Window): Promise<void> {
   const button = byId<HTMLButtonElement>(win, "modelFetch");
@@ -237,23 +285,18 @@ async function loadModelOptions(win: Window): Promise<void> {
       }),
       timeoutMs: getNumberPref("requestTimeoutMs", 30000),
     });
-    const list = byId<HTMLElement>(win, "modelOptions");
-    if (list) {
-      list.textContent = "";
-      for (const id of ids) {
-        const option = win.document.createElementNS(
-          XHTML_NS,
-          "option",
-        ) as HTMLOptionElement;
-        option.value = normalizeModelId(provider, id);
-        list.appendChild(option);
-      }
-    }
+    setModelOptions(
+      win,
+      ids.map((id) => normalizeModelId(provider, id)),
+    );
     setModelStatus(
       win,
       getString("pref-model-status-loaded", { count: ids.length }),
     );
   } catch (e) {
+    // Keep the preset list on screen: a failed fetch must not leave the pane
+    // with no choices at all.
+    seedModelOptions(win);
     setModelStatus(
       win,
       getString("pref-model-status-failed", {
@@ -265,6 +308,25 @@ async function loadModelOptions(win: Window): Promise<void> {
       button.disabled = false;
     }
   }
+}
+
+/**
+ * Seed the dropdown, and fetch the catalogue when there is nothing to seed.
+ *
+ * Presets that ship a verified list (ClinePass) are usable immediately; the
+ * others can only offer models after `GET {baseURL}/models`, so a saved key
+ * triggers one fetch on open instead of leaving the dropdown with just the
+ * "use preset" entry.
+ */
+function maybeAutoFetchModelOptions(win: Window): void {
+  const provider = normalizeProviderId(getPref("provider"));
+  if (presetModelIds(provider).length) {
+    return;
+  }
+  if (!readProviderInputs(win).apiKey) {
+    return;
+  }
+  void loadModelOptions(win);
 }
 
 /**
@@ -534,11 +596,30 @@ function bindEvents(win: Window): void {
   providerSelect?.addEventListener("change", () => {
     switchProvider(win, normalizeProviderId(providerSelect.value));
     updatePlaceholders(win);
-    clearModelOptions(win);
+    seedModelOptions(win);
+    maybeAutoFetchModelOptions(win);
   });
 
   byId<HTMLButtonElement>(win, "modelFetch")?.addEventListener("click", () => {
     void loadModelOptions(win);
+  });
+
+  // Two controls, one value: picking an option writes the text field (and the
+  // pref), typing in the field re-selects the matching option (or adds one).
+  byId<HTMLSelectElement>(win, "modelSelect")?.addEventListener(
+    "change",
+    (event) => {
+      const select = event.target as HTMLSelectElement;
+      const input = byId<HTMLInputElement>(win, "model");
+      if (input) {
+        input.value = select.value;
+      }
+      setPref("model", select.value);
+      renderModelSelect(win);
+    },
+  );
+  byId<HTMLInputElement>(win, "model")?.addEventListener("change", () => {
+    renderModelSelect(win);
   });
 
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
@@ -613,6 +694,8 @@ function bindEvents(win: Window): void {
 export function registerPrefsScripts(win: Window): void {
   populateStaticSelects(win);
   syncFromPrefs(win);
+  seedModelOptions(win);
+  maybeAutoFetchModelOptions(win);
   if (!bound.has(win)) {
     bound.add(win);
     bindEvents(win);

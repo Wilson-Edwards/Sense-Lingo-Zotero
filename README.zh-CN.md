@@ -105,9 +105,13 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 每个服务商的 Key / 地址 / 模型会**分别保存**，来回切换不会互相覆盖。
 用本地模型请选 `Custom`，把接口地址指向本地 OpenAI 兼容端点。
 
-模型输入框旁的 **获取模型** 按钮会向服务商请求模型列表，输入时以下拉建议展示。
-ClinePass 的模型列表 `/cline-pass/models` 与账号绑定，需要先填好 API Key；
-选中 ClinePass 后，请求会自动带上 `X-Response-Format: openai` 响应头。
+模型框是一个**下拉列表**，打开设置页就会填好当前服务商的模型，选一项即可：
+ClinePass 直接列出预设里那 10 个实测可用的 slug（打开即可选，无需先点按钮），
+第一项「使用预设」等价于把 `model` 留空；下拉里没有的模型写在 **自定义模型** 里。
+点 **获取模型** 只是刷新一次：ClinePass 没有自己的模型列表接口
+（`/api/v1/cline-pass/models` 为 404），共享的 `/api/v1/models` 里也不含
+`cline-pass/...` 别名，所以刷新后仍回落到预设清单。选中 ClinePass 后，请求会自动带上
+`X-Response-Format: openai` 响应头。
 
 ### 3. 开始使用
 

@@ -115,10 +115,13 @@ Open `Edit` → `Settings` → `Sense Lingo`:
 
 Credentials (key / URL / model) are stored **per provider**, so switching back and forth never
 overwrites the other one. For a local model, choose `Custom` and point the base URL at a local
-OpenAI-compatible endpoint. The **Fetch models** button next to the model field asks the provider
-for its catalogue and offers the ids as you type; ClinePass needs a valid key because its list
-(`/cline-pass/models`) is account-scoped, and its requests automatically carry
-`X-Response-Format: openai`.
+OpenAI-compatible endpoint. The model field is a **dropdown** that is already filled for the
+current provider when the pane opens, so a model can just be picked. ClinePass lists the ten
+slugs baked into the preset (no fetch needed); its first entry, "Use preset", is the same as
+leaving `model` blank, and a model the list lacks goes in **Custom model**. **Fetch models** only
+refreshes the list once: ClinePass has no catalogue of its own (`/api/v1/cline-pass/models` is a
+404 and the shared `/api/v1/models` lists no `cline-pass/...` alias), so the refresh falls back
+to the preset list. Its requests automatically carry `X-Response-Format: openai`.
 
 ### 3. Translate something
 

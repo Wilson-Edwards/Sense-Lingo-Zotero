@@ -5,7 +5,10 @@ pref-provider = Preset
 pref-provider-hint = Each provider keeps its own API key, base URL and model; switching presets won't overwrite them
 pref-api-key = API key
 pref-base-url = Base URL (blank = preset)
-pref-model = Model (blank = preset)
+pref-model = Model
+pref-model-custom = Custom model
+pref-model-hint = Pick one from the list above; a model the list lacks can be typed under "Custom model". Leaving it blank uses the preset default.
+pref-model-use-preset = Use preset ({ $model })
 pref-model-fetch = Fetch models
 pref-model-status-loading = Fetching models…
 pref-model-status-loaded = Loaded { $count } model(s)

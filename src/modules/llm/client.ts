@@ -55,10 +55,10 @@ export function buildChatEndpoint(baseURL: string): string {
 }
 
 /**
- * URL of the model list, e.g. `https://api.cline.bot/api/v1/cline-pass/models`.
+ * URL of the model list, e.g. `https://api.openai.com/v1/models`.
  *
- * Most providers expose `/models`; ClinePass keeps its subscription models on
- * its own path, which the preset passes in through `modelsPath`.
+ * Most providers expose `/models`; a preset that keeps its catalogue elsewhere
+ * passes the path in through `modelsPath`.
  */
 export function buildModelsEndpoint(
   baseURL: string,
@@ -135,6 +135,28 @@ export function parseModelIds(payload: unknown): string[] {
     .map((id) => id.trim())
     .filter(Boolean);
   return [...new Set(ids)];
+}
+
+/**
+ * Keep only the ids the preset can actually call, and top them up with the ones
+ * baked into the preset.
+ *
+ * A catalogue can be broader than one credential: Cline's `/models` lists the
+ * whole pay-as-you-go catalogue and none of the `cline-pass/...` aliases, so a
+ * ClinePass key would otherwise be offered models outside its subscription.
+ */
+export function selectModelIds(
+  ids: readonly string[],
+  modelPrefix: string,
+  fallbackModels: readonly string[],
+): string[] {
+  const scoped = modelPrefix
+    ? ids.filter((id) => id.startsWith(modelPrefix))
+    : [...ids];
+  if (!scoped.length) {
+    return [...new Set(fallbackModels)];
+  }
+  return [...new Set([...scoped, ...fallbackModels])];
 }
 
 function contentToString(content: unknown): string {
@@ -620,8 +642,12 @@ export interface ListModelsOptions {
  *
  * This is what powers the "fetch models" button in the settings pane: a GET on
  * the preset's `modelsPath` with the same key and extra headers as a chat
- * request. ClinePass answers `401` here until a key is supplied, so the key is
- * required; a provider that exposes an open catalogue simply ignores it.
+ * request. A provider that exposes an open catalogue simply ignores the key.
+ *
+ * ClinePass answers on the shared `/models` and never lists its subscription
+ * aliases there, so the result is narrowed to `modelPrefix` and completed from
+ * the preset's `fallbackModels`; that also keeps a provider without a catalogue
+ * endpoint usable instead of failing the button.
  *
  * Failures are normalized into `LlmError` exactly like `chatCompletion`, so the
  * pane can print one localized message.
@@ -678,7 +704,12 @@ export async function fetchModelIds(
         detail,
       });
     }
-    const ids = parseModelIds(parseJsonBody(await response.text()));
+    const listed = parseModelIds(parseJsonBody(await response.text()));
+    const ids = selectModelIds(
+      listed,
+      config.modelPrefix,
+      config.fallbackModels,
+    );
     if (!ids.length) {
       throw new LlmError("EMPTY", "The provider returned no models");
     }

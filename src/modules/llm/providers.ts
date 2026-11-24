@@ -20,12 +20,48 @@ export interface ProviderPreset {
    */
   headers?: Record<string, string>;
   /**
-   * Path (relative to `baseURL`) of the model list, if the provider does not
-   * expose it at the usual `/models`. ClinePass keeps its subscription models
-   * on `/cline-pass/models`.
+   * Path (relative to `baseURL`) of the model list, when the provider does not
+   * expose it at the usual `/models`.
    */
   modelsPath?: string;
+  /**
+   * Namespace the `model` field accepts. A catalogue can list ids outside it
+   * (ClinePass' `/models` answers with the plain `provider/model` catalogue),
+   * so suggestions are filtered down to this prefix.
+   */
+  modelPrefix?: string;
+  /**
+   * Ids known to work with a valid key, offered when the catalogue endpoint has
+   * nothing inside `modelPrefix`.
+   *
+   * ClinePass has no endpoint for its subscription models: `/api/v1/models`
+   * returns the full pay-as-you-go catalogue and none of the `cline-pass/...`
+   * aliases, and `/api/v1/cline-pass/models` is a 404. The list below was
+   * verified one slug at a time against a live subscription.
+   */
+  fallbackModels?: readonly string[];
 }
+
+/**
+ * ClinePass models that answered a real request with a subscription key.
+ *
+ * The published table is not authoritative — `minimax-m3`, `mimo-v2.6-pro`,
+ * `mimo-v2.6-flash` answer `404 model not found`, and `qwen3.7-max` /
+ * `qwen3.7-plus` fail provider routing, so they are left out instead of being
+ * suggested.
+ */
+export const CLINE_PASS_MODELS: readonly string[] = [
+  "cline-pass/deepseek-v4.1-flash",
+  "cline-pass/deepseek-v4.1-flash-1017",
+  "cline-pass/deepseek-v4-pro",
+  "cline-pass/glm-5.3",
+  "cline-pass/glm-5.3-flash",
+  "cline-pass/kimi-k3",
+  "cline-pass/kimi-k3.1-pro",
+  "cline-pass/minimax-m3.1-flash",
+  "cline-pass/muse-spark-1.3-contributor",
+  "cline-pass/qwen3.8-max",
+];
 
 export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
   openai: {
@@ -45,10 +81,15 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     label: "ClinePass",
     baseURL: "https://api.cline.bot/api/v1",
     // Flash models keep translation latency low; any `cline-pass/...` slug from
-    // the subscription works, and the settings pane can fetch the live list.
+    // the subscription works, and the settings pane offers the ones we could
+    // confirm against a live key.
     model: "cline-pass/deepseek-v4.1-flash",
     headers: { "X-Response-Format": "openai" },
-    modelsPath: "/cline-pass/models",
+    // The Cline API exposes one shared catalogue; `/cline-pass/models` does not
+    // exist, so the subscription aliases come from `CLINE_PASS_MODELS`.
+    modelsPath: "/models",
+    modelPrefix: "cline-pass/",
+    fallbackModels: CLINE_PASS_MODELS,
   },
   custom: {
     id: "custom",
@@ -85,6 +126,37 @@ export function normalizeModelId(provider: ProviderId, raw: string): string {
   return id;
 }
 
+/**
+ * Models the settings pane can offer before any request is made.
+ *
+ * Only presets that ship a verified list have one (ClinePass); everything else
+ * is discovered from `GET {baseURL}/models`.
+ */
+export function presetModelIds(provider: ProviderId): string[] {
+  return (PROVIDERS[provider].fallbackModels ?? []).map((id) =>
+    normalizeModelId(provider, id),
+  );
+}
+
+/**
+ * Values for the settings pane's model dropdown.
+ *
+ * The first entry is the empty string, meaning "use the preset model" (which is
+ * what a blank `model` pref does). The offered ids follow, de-duplicated, and a
+ * model typed by hand is appended so the dropdown always reflects the field.
+ */
+export function modelChoices(
+  ids: readonly string[],
+  current: string,
+): string[] {
+  const value = current.trim();
+  const choices = ["", ...new Set(ids.filter((id) => id !== ""))];
+  if (value && !choices.includes(value)) {
+    choices.push(value);
+  }
+  return choices;
+}
+
 export interface ProviderPrefsInput {
   provider?: unknown;
   apiKey?: string;
@@ -105,6 +177,10 @@ export interface EffectiveProviderConfig {
   headers: Record<string, string>;
   /** Path of the model list relative to `baseURL`, e.g. `/models`. */
   modelsPath: string;
+  /** Only ids with this prefix are usable, e.g. `cline-pass/`. */
+  modelPrefix: string;
+  /** Ids to offer when the catalogue has nothing inside `modelPrefix`. */
+  fallbackModels: readonly string[];
   temperature: number;
   maxTokens: number;
   timeoutMs: number;
@@ -131,6 +207,8 @@ export function resolveProviderConfig(
     model,
     headers: { ...(preset.headers ?? {}) },
     modelsPath: preset.modelsPath ?? "/models",
+    modelPrefix: preset.modelPrefix ?? "",
+    fallbackModels: preset.fallbackModels ?? [],
     temperature:
       typeof input.temperature === "number" &&
       Number.isFinite(input.temperature)

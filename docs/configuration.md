@@ -71,9 +71,34 @@
 - `clinepass` 使用 Cline 的 API（Key 在 `app.cline.bot` 的 **Settings → API Keys** 创建），
   请求会自动带上 `X-Response-Format: openai`，让非流式响应保持标准的
   `choices[0].message.content` 结构；模型名为 `cline-pass/...` 形式。
-- 设置页模型输入框旁的 **获取模型** 按钮会请求服务商的模型列表并作为输入建议：
-  普通预设走 `GET {baseURL}/models`，ClinePass 走 `GET {baseURL}/cline-pass/models`
-  （需要有效 Key，否则返回 401）。列表只是建议，仍可手动输入任意模型名。
+- 设置页的 **模型** 是一个下拉框，打开设置页或切换服务商时就会填好：
+  普通预设先用该服务商 `/models` 的清单，ClinePass 则直接列出预设里那 10 个实测可跑的
+  slug（接口没有 ClinePass 专用列表，详见下一节）。下拉第一项是「使用预设
+  （<预设默认模型>）」，等价于把 `model` 留空。下拉里没有的模型写在 **自定义模型**
+  里，它会立刻成为下拉的选中项；点 **获取模型** 只是再向接口刷新一次并报告条数。
+- 获取模型失败时会保留预设清单，不会让下拉变成空的。
+- **获取模型** 只是刷新一次：普通预设走 `GET {baseURL}/models`；ClinePass 没有独立的
+  模型列表接口——`/api/v1/cline-pass/models` 返回 404，唯一存在的是共享的
+  `GET /api/v1/models`，而那份目录（约 460 个 `provider/model` 形式的付费模型）里
+  **不含任何** `cline-pass/...` 订阅别名，所以接口返回后会把列表收窄到 `cline-pass/`
+  前缀，收窄为空时回落到内置的 `CLINE_PASS_MODELS`（逐个用真实 Key 实测可用的 slug）。
+
+ClinePass 预设内置的 10 个模型（均为真实 Key 实测跑通，剩下的官方表格项
+`minimax-m3`、`mimo-v2.6-pro`、`mimo-v2.6-flash` 返回 404，`qwen3.7-max`、`qwen3.7-plus`
+路由失败，故未收录）：
+
+| 模型 ID                                 | 说明                                 |
+| --------------------------------------- | ------------------------------------ |
+| `cline-pass/deepseek-v4.1-flash`        | 默认值，延迟最低                     |
+| `cline-pass/deepseek-v4.1-flash-1017`   | Flash 的 1017 快照                   |
+| `cline-pass/deepseek-v4-pro`            | 更强，慢一些                         |
+| `cline-pass/glm-5.3-flash`              | 轻量                                 |
+| `cline-pass/glm-5.3`                    | 均衡                                 |
+| `cline-pass/kimi-k3`                    | 长上下文                             |
+| `cline-pass/kimi-k3.1-pro`              | 更强                                 |
+| `cline-pass/minimax-m3.1-flash`         | 轻量                                 |
+| `cline-pass/muse-spark-1.3-contributor` | 带 reasoning，需要更大的 `maxTokens` |
+| `cline-pass/qwen3.8-max`                | 最强也最贵                           |
 
 ## 服务商之间的隔离
 

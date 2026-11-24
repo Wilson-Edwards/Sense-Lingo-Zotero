@@ -40,19 +40,19 @@
     </hbox>
 
     <hbox align="center" class="sl-row">
-      <html:label for="sl-model" data-l10n-id="pref-model"></html:label>
-      <html:input
-        type="text"
-        id="sl-model"
-        list="sl-modelOptions"
-        style="min-width: 240px"
-      />
+      <html:label for="sl-modelSelect" data-l10n-id="pref-model"></html:label>
+      <html:select id="sl-modelSelect" style="min-width: 240px"></html:select>
       <html:button
         id="sl-modelFetch"
         data-l10n-id="pref-model-fetch"
       ></html:button>
     </hbox>
-    <html:datalist id="sl-modelOptions"></html:datalist>
+
+    <hbox align="center" class="sl-row">
+      <html:label for="sl-model" data-l10n-id="pref-model-custom"></html:label>
+      <html:input type="text" id="sl-model" style="min-width: 240px" />
+    </hbox>
+    <html:div class="sl-hint" data-l10n-id="pref-model-hint"></html:div>
     <html:div id="sl-model-status" class="sl-hint"></html:div>
 
     <hbox align="center" class="sl-row">

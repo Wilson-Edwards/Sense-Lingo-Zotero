@@ -5,11 +5,15 @@ import {
   chatCompletion,
   fetchModelIds,
   parseModelIds,
+  selectModelIds,
 } from "../src/modules/llm/client";
 import {
+  CLINE_PASS_MODELS,
   PROVIDERS,
+  modelChoices,
   normalizeModelId,
   normalizeProviderId,
+  presetModelIds,
   resolveProviderConfig,
 } from "../src/modules/llm/providers";
 
@@ -25,7 +29,11 @@ describe("clinepass preset", () => {
     const resolved = resolveProviderConfig({ provider: "clinepass" });
     expect(resolved.baseURL).toBe("https://api.cline.bot/api/v1");
     expect(resolved.model).toBe("cline-pass/deepseek-v4.1-flash");
-    expect(resolved.modelsPath).toBe("/cline-pass/models");
+    // `/cline-pass/models` does not exist on api.cline.bot (404); the shared
+    // catalogue is the only model list the API exposes.
+    expect(resolved.modelsPath).toBe("/models");
+    expect(resolved.modelPrefix).toBe("cline-pass/");
+    expect(resolved.fallbackModels).toEqual(CLINE_PASS_MODELS);
   });
 
   it("adds X-Response-Format: openai to every request", () => {
@@ -68,6 +76,51 @@ describe("clinepass preset", () => {
   });
 });
 
+describe("presetModelIds", () => {
+  it("offers the verified ClinePass models in the settings pane", () => {
+    const ids = presetModelIds("clinepass");
+    expect(ids).toEqual([...CLINE_PASS_MODELS]);
+    expect(ids).toContain("cline-pass/deepseek-v4.1-flash");
+    // Slugs that answer 404 / fail provider routing must never be suggested.
+    for (const dead of [
+      "cline-pass/minimax-m3",
+      "cline-pass/mimo-v2.6-pro",
+      "cline-pass/mimo-v2.6-flash",
+      "cline-pass/qwen3.7-max",
+      "cline-pass/qwen3.7-plus",
+    ]) {
+      expect(ids).not.toContain(dead);
+    }
+  });
+
+  it("has nothing to offer for presets without a bundled list", () => {
+    expect(presetModelIds("openai")).toEqual([]);
+    expect(presetModelIds("deepseek")).toEqual([]);
+    expect(presetModelIds("custom")).toEqual([]);
+  });
+});
+
+describe("modelChoices", () => {
+  it('starts with the empty value that means "use the preset"', () => {
+    expect(modelChoices([], "")).toEqual([""]);
+    expect(modelChoices(["cline-pass/glm-5.3"], "")).toEqual([
+      "",
+      "cline-pass/glm-5.3",
+    ]);
+  });
+
+  it("appends a hand-typed model so the dropdown can show it", () => {
+    expect(
+      modelChoices(["cline-pass/glm-5.3"], "cline-pass/custom-thing"),
+    ).toEqual(["", "cline-pass/glm-5.3", "cline-pass/custom-thing"]);
+  });
+
+  it("does not duplicate a listed or blank value", () => {
+    expect(modelChoices(["a", "a"], "a")).toEqual(["", "a"]);
+    expect(modelChoices(["a", ""], "  ")).toEqual(["", "a"]);
+  });
+});
+
 describe("normalizeModelId", () => {
   it("qualifies a bare ClinePass slug", () => {
     expect(normalizeModelId("clinepass", "glm-5.3-flash")).toBe(
@@ -94,18 +147,15 @@ describe("buildModelsEndpoint", () => {
   });
 
   it("honours a custom path", () => {
-    expect(
-      buildModelsEndpoint("https://api.cline.bot/api/v1", "/cline-pass/models"),
-    ).toBe("https://api.cline.bot/api/v1/cline-pass/models");
+    expect(buildModelsEndpoint("https://api.cline.bot/api/v1", "/models")).toBe(
+      "https://api.cline.bot/api/v1/models",
+    );
   });
 
   it("does not duplicate an existing suffix", () => {
     expect(
-      buildModelsEndpoint(
-        "https://api.cline.bot/api/v1/cline-pass/models",
-        "/cline-pass/models",
-      ),
-    ).toBe("https://api.cline.bot/api/v1/cline-pass/models");
+      buildModelsEndpoint("https://api.cline.bot/api/v1/models", "/models"),
+    ).toBe("https://api.cline.bot/api/v1/models");
   });
 
   it("returns an empty string without a base URL", () => {
@@ -153,6 +203,39 @@ describe("parseModelIds", () => {
   });
 });
 
+describe("selectModelIds", () => {
+  it("keeps the whole catalogue when the preset has no namespace", () => {
+    expect(selectModelIds(["a", "b"], "", [])).toEqual(["a", "b"]);
+  });
+
+  it("drops ids outside the namespace", () => {
+    expect(
+      selectModelIds(
+        ["cline-pass/glm-5.3", "qwen/qwen3.7-plus"],
+        "cline-pass/",
+        [],
+      ),
+    ).toEqual(["cline-pass/glm-5.3"]);
+  });
+
+  it("falls back to the preset list when everything is filtered out", () => {
+    expect(
+      selectModelIds(["qwen/qwen3.7-plus"], "cline-pass/", [
+        "cline-pass/glm-5.3",
+      ]),
+    ).toEqual(["cline-pass/glm-5.3"]);
+  });
+
+  it("merges listed and preset ids without duplicates", () => {
+    expect(
+      selectModelIds(["cline-pass/glm-5.3"], "cline-pass/", [
+        "cline-pass/glm-5.3",
+        "cline-pass/kimi-k3",
+      ]),
+    ).toEqual(["cline-pass/glm-5.3", "cline-pass/kimi-k3"]);
+  });
+});
+
 describe("fetchModelIds", () => {
   it("GETs the preset model path with auth and preset headers", async () => {
     const fetchImpl = vi.fn(async () =>
@@ -164,17 +247,40 @@ describe("fetchModelIds", () => {
       config: resolveProviderConfig({ provider: "clinepass", apiKey: "k" }),
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    expect(ids).toEqual(["cline-pass/glm-5.3", "cline-pass/kimi-k3"]);
+    expect(ids).toEqual([
+      ...new Set([
+        "cline-pass/glm-5.3",
+        "cline-pass/kimi-k3",
+        ...CLINE_PASS_MODELS,
+      ]),
+    ]);
 
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [
       string,
       RequestInit,
     ];
-    expect(url).toBe("https://api.cline.bot/api/v1/cline-pass/models");
+    expect(url).toBe("https://api.cline.bot/api/v1/models");
     expect(init.method).toBe("GET");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer k");
     expect(headers["X-Response-Format"]).toBe("openai");
+  });
+
+  it("offers the ClinePass aliases when the catalogue has none", async () => {
+    // What api.cline.bot actually answers: the pay-as-you-go catalogue, with no
+    // `cline-pass/...` entry anywhere.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        object: "list",
+        data: [{ id: "qwen/qwen3.7-plus" }, { id: "openai/gpt-6.2-astra" }],
+      }),
+    );
+    const ids = await fetchModelIds({
+      config: resolveProviderConfig({ provider: "clinepass", apiKey: "k" }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(ids).toEqual([...CLINE_PASS_MODELS]);
+    expect(ids.every((id) => id.startsWith("cline-pass/"))).toBe(true);
   });
 
   it("keeps the API error message", async () => {
