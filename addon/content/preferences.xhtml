@@ -41,8 +41,19 @@
 
     <hbox align="center" class="sl-row">
       <html:label for="sl-model" data-l10n-id="pref-model"></html:label>
-      <html:input type="text" id="sl-model" style="min-width: 240px" />
+      <html:input
+        type="text"
+        id="sl-model"
+        list="sl-modelOptions"
+        style="min-width: 240px"
+      />
+      <html:button
+        id="sl-modelFetch"
+        data-l10n-id="pref-model-fetch"
+      ></html:button>
     </hbox>
+    <html:datalist id="sl-modelOptions"></html:datalist>
+    <html:div id="sl-model-status" class="sl-hint"></html:div>
 
     <hbox align="center" class="sl-row">
       <html:label

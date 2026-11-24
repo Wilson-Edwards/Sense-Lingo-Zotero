@@ -8,13 +8,16 @@
  */
 
 import { getString } from "../../utils/locale";
-import { getPref, setPref, setPrefRaw } from "../../utils/prefs";
+import { getNumberPref, getPref, setPref, setPrefRaw } from "../../utils/prefs";
+import { fetchModelIds } from "../llm/client";
 import {
   PROVIDER_FIELD_KEYS,
   PROVIDER_IDS,
   PROVIDERS,
+  normalizeModelId,
   normalizeProviderId,
   parseProviderCredentials,
+  resolveProviderConfig,
   serializeProviderCredentials,
   switchProviderCredentials,
   type ProviderCredentialValues,
@@ -183,6 +186,84 @@ function writeProviderInputs(
       input.value = values[key];
     }
     setPref(key, values[key]);
+  }
+}
+
+/** One-line feedback under the model field. */
+function setModelStatus(win: Window, message: string): void {
+  const status = byId<HTMLElement>(win, "model-status");
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+/** Drop suggestions from the previous provider so they cannot be picked. */
+function clearModelOptions(win: Window): void {
+  const list = byId<HTMLElement>(win, "modelOptions");
+  if (list) {
+    list.textContent = "";
+  }
+  setModelStatus(win, "");
+}
+
+/**
+ * Ask the provider for its model list and offer the ids as suggestions.
+ *
+ * The list is a `<datalist>`, so the input stays free text: a model that the
+ * catalogue omits (or a gateway that does not implement `/models`) can still
+ * be typed by hand. ClinePass only answers with a valid key, which is why the
+ * button reports that instead of failing silently.
+ */
+async function loadModelOptions(win: Window): Promise<void> {
+  const button = byId<HTMLButtonElement>(win, "modelFetch");
+  const values = readProviderInputs(win);
+  if (!values.apiKey) {
+    setModelStatus(win, getString("pref-model-status-need-key"));
+    return;
+  }
+
+  const provider = normalizeProviderId(getPref("provider"));
+  if (button) {
+    button.disabled = true;
+  }
+  setModelStatus(win, getString("pref-model-status-loading"));
+  try {
+    const ids = await fetchModelIds({
+      config: resolveProviderConfig({
+        provider,
+        apiKey: values.apiKey,
+        baseURL: values.baseURL,
+        model: values.model,
+      }),
+      timeoutMs: getNumberPref("requestTimeoutMs", 30000),
+    });
+    const list = byId<HTMLElement>(win, "modelOptions");
+    if (list) {
+      list.textContent = "";
+      for (const id of ids) {
+        const option = win.document.createElementNS(
+          XHTML_NS,
+          "option",
+        ) as HTMLOptionElement;
+        option.value = normalizeModelId(provider, id);
+        list.appendChild(option);
+      }
+    }
+    setModelStatus(
+      win,
+      getString("pref-model-status-loaded", { count: ids.length }),
+    );
+  } catch (e) {
+    setModelStatus(
+      win,
+      getString("pref-model-status-failed", {
+        error: (e as Error)?.message || String(e),
+      }),
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
   }
 }
 
@@ -453,6 +534,11 @@ function bindEvents(win: Window): void {
   providerSelect?.addEventListener("change", () => {
     switchProvider(win, normalizeProviderId(providerSelect.value));
     updatePlaceholders(win);
+    clearModelOptions(win);
+  });
+
+  byId<HTMLButtonElement>(win, "modelFetch")?.addEventListener("click", () => {
+    void loadModelOptions(win);
   });
 
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");

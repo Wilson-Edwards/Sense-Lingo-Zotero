@@ -64,7 +64,7 @@ for changing it._
 | 🧩 Context disambiguation      | Words automatically bring their containing sentence; sentences can optionally bring one neighbour on each side.                                                                                                           |
 | 🗣 US / UK IPA                  | The word prompt always returns three lines: **meaning** / **US IPA** / **UK IPA**, including people, places, brands and products.                                                                                         |
 | 🎯 Two-prompt routing          | Separate templates for “word” (contextual meaning + part of speech) and “sentence” (readable translation).                                                                                                                |
-| 🤖 Multiple providers          | Built-in **OpenAI** and **DeepSeek**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).                                                                                          |
+| 🤖 Multiple providers          | Built-in **OpenAI**, **DeepSeek** and **ClinePass**, plus an “OpenAI compatible” mode for any self-hosted gateway or local model (e.g. Ollama).                                                                           |
 | ✍️ Fully editable prompts      | Multiple presets per kind, managed (new / copy / delete) and switched in settings; the result panel can try another preset on the spot. Line breaks and `{text}` / `{sentence}` / `{targetLang}` variables are preserved. |
 | 🎛️ Configurable model          | `baseURL`, `model`, `temperature`, `max_tokens` and timeout; per-provider credentials never overwrite each other.                                                                                                         |
 | ⚡ Shortcut result panel       | `Ctrl/⌘ + Shift + T`: detected kind, template name, matched sentence, model · latency; flip kind, tweak the user message, copy.                                                                                           |
@@ -101,20 +101,24 @@ Install that xpi through the same menu. Requires **Zotero 7.0 – 11.x**; see
 
 Open `Edit` → `Settings` → `Sense Lingo`:
 
-| Field           | What to enter                                                     |
-| --------------- | ----------------------------------------------------------------- |
-| Provider preset | `OpenAI` / `DeepSeek` / `Custom (OpenAI compatible)`              |
-| API Key         | The key for that provider (required)                              |
-| Base URL, Model | Leave blank to use the preset; fill them in for a custom endpoint |
+| Field           | What to enter                                                      |
+| --------------- | ------------------------------------------------------------------ |
+| Provider preset | `OpenAI` / `DeepSeek` / `ClinePass` / `Custom (OpenAI compatible)` |
+| API Key         | The key for that provider (required)                               |
+| Base URL, Model | Leave blank to use the preset; fill them in for a custom endpoint  |
 
-| provider   | Default base URL              | Default model   |
-| ---------- | ----------------------------- | --------------- |
-| `openai`   | `https://api.openai.com/v1`   | `gpt-4o-mini`   |
-| `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| provider    | Default base URL               | Default model                    |
+| ----------- | ------------------------------ | -------------------------------- |
+| `openai`    | `https://api.openai.com/v1`    | `gpt-4o-mini`                    |
+| `deepseek`  | `https://api.deepseek.com/v1`  | `deepseek-chat`                  |
+| `clinepass` | `https://api.cline.bot/api/v1` | `cline-pass/deepseek-v4.1-flash` |
 
 Credentials (key / URL / model) are stored **per provider**, so switching back and forth never
 overwrites the other one. For a local model, choose `Custom` and point the base URL at a local
-OpenAI-compatible endpoint.
+OpenAI-compatible endpoint. The **Fetch models** button next to the model field asks the provider
+for its catalogue and offers the ids as you type; ClinePass needs a valid key because its list
+(`/cline-pass/models`) is account-scoped, and its requests automatically carry
+`X-Response-Format: openai`.
 
 ### 3. Translate something
 
@@ -168,7 +172,7 @@ isolation and `about:config` recipes are in
 
 | Setting             | Default    | Purpose                                                                  |
 | ------------------- | ---------- | ------------------------------------------------------------------------ |
-| Provider preset     | `openai`   | `openai` / `deepseek` / `custom`                                         |
+| Provider preset     | `openai`   | `openai` / `deepseek` / `clinepass` / `custom`                           |
 | API Key             | empty      | Required; stored in plain text in Zotero prefs                           |
 | Base URL / Model    | empty      | Blank = preset; a bare host gets `/v1` appended automatically            |
 | Temperature         | `0.3`      | Lower is more stable; 0–0.5 is recommended for translation               |

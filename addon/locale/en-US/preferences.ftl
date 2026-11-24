@@ -6,6 +6,11 @@ pref-provider-hint = Each provider keeps its own API key, base URL and model; sw
 pref-api-key = API key
 pref-base-url = Base URL (blank = preset)
 pref-model = Model (blank = preset)
+pref-model-fetch = Fetch models
+pref-model-status-loading = Fetching models…
+pref-model-status-loaded = Loaded { $count } model(s)
+pref-model-status-failed = Could not fetch models: { $error }
+pref-model-status-need-key = Enter the API key first
 pref-temperature = Temperature
 pref-max-tokens = Max tokens
 

@@ -6,6 +6,11 @@ pref-provider-hint = 每个服务商单独保存 API Key、接口地址与模型
 pref-api-key = API Key
 pref-base-url = 接口地址（留空使用预设）
 pref-model = 模型（留空使用预设）
+pref-model-fetch = 获取模型
+pref-model-status-loading = 正在获取模型…
+pref-model-status-loaded = 已获取 { $count } 个模型
+pref-model-status-failed = 获取模型失败：{ $error }
+pref-model-status-need-key = 请先填写 API Key
 pref-temperature = 温度
 pref-max-tokens = 最大 tokens
 

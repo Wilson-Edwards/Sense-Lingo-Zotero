@@ -1,17 +1,30 @@
 /**
  * Provider presets.
  *
- * DeepSeek speaks the OpenAI chat-completions protocol, so one client covers
- * both; a preset is nothing but a default base URL plus a default model.
+ * OpenAI, DeepSeek and ClinePass all speak the OpenAI chat-completions
+ * protocol, so one client covers them; a preset is a default base URL, a
+ * default model and — for gateways that need it — extra request headers.
  */
 
-export type ProviderId = "openai" | "deepseek" | "custom";
+export type ProviderId = "openai" | "deepseek" | "clinepass" | "custom";
 
 export interface ProviderPreset {
   id: ProviderId;
   label: string;
   baseURL: string;
   model: string;
+  /**
+   * Headers every request to this provider must carry. ClinePass uses
+   * `X-Response-Format: openai` so non-streaming answers keep the standard
+   * `choices[0].message.content` shape instead of the legacy `data` wrapper.
+   */
+  headers?: Record<string, string>;
+  /**
+   * Path (relative to `baseURL`) of the model list, if the provider does not
+   * expose it at the usual `/models`. ClinePass keeps its subscription models
+   * on `/cline-pass/models`.
+   */
+  modelsPath?: string;
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
@@ -27,6 +40,16 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     baseURL: "https://api.deepseek.com/v1",
     model: "deepseek-chat",
   },
+  clinepass: {
+    id: "clinepass",
+    label: "ClinePass",
+    baseURL: "https://api.cline.bot/api/v1",
+    // Flash models keep translation latency low; any `cline-pass/...` slug from
+    // the subscription works, and the settings pane can fetch the live list.
+    model: "cline-pass/deepseek-v4.1-flash",
+    headers: { "X-Response-Format": "openai" },
+    modelsPath: "/cline-pass/models",
+  },
   custom: {
     id: "custom",
     label: "Custom (OpenAI compatible)",
@@ -35,10 +58,31 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
   },
 };
 
-export const PROVIDER_IDS: ProviderId[] = ["openai", "deepseek", "custom"];
+export const PROVIDER_IDS: ProviderId[] = [
+  "openai",
+  "deepseek",
+  "clinepass",
+  "custom",
+];
 
 export function normalizeProviderId(raw: unknown): ProviderId {
-  return raw === "deepseek" || raw === "custom" ? raw : "openai";
+  return raw === "deepseek" || raw === "clinepass" || raw === "custom"
+    ? raw
+    : "openai";
+}
+
+/**
+ * Turn a listed model id into something usable in the `model` field.
+ *
+ * ClinePass documents full `cline-pass/<slug>` ids; a list that returns a bare
+ * slug is completed with the prefix so the request does not fail.
+ */
+export function normalizeModelId(provider: ProviderId, raw: string): string {
+  const id = raw.trim();
+  if (provider === "clinepass" && id && !id.includes("/")) {
+    return `cline-pass/${id}`;
+  }
+  return id;
 }
 
 export interface ProviderPrefsInput {
@@ -57,6 +101,10 @@ export interface EffectiveProviderConfig {
   apiKey: string;
   baseURL: string;
   model: string;
+  /** Extra headers the preset needs on every request (e.g. ClinePass). */
+  headers: Record<string, string>;
+  /** Path of the model list relative to `baseURL`, e.g. `/models`. */
+  modelsPath: string;
   temperature: number;
   maxTokens: number;
   timeoutMs: number;
@@ -81,6 +129,8 @@ export function resolveProviderConfig(
     apiKey: (input.apiKey ?? "").trim(),
     baseURL,
     model,
+    headers: { ...(preset.headers ?? {}) },
+    modelsPath: preset.modelsPath ?? "/models",
     temperature:
       typeof input.temperature === "number" &&
       Number.isFinite(input.temperature)

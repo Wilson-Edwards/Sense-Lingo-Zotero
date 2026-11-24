@@ -54,6 +54,89 @@ export function buildChatEndpoint(baseURL: string): string {
   return /\/chat\/completions$/i.test(url) ? url : `${url}/chat/completions`;
 }
 
+/**
+ * URL of the model list, e.g. `https://api.cline.bot/api/v1/cline-pass/models`.
+ *
+ * Most providers expose `/models`; ClinePass keeps its subscription models on
+ * its own path, which the preset passes in through `modelsPath`.
+ */
+export function buildModelsEndpoint(
+  baseURL: string,
+  modelsPath = "/models",
+): string {
+  const url = normalizeBaseURL(baseURL);
+  if (!url) {
+    return "";
+  }
+  const path = modelsPath.startsWith("/") ? modelsPath : `/${modelsPath}`;
+  return url.endsWith(path) ? url : `${url}${path}`;
+}
+
+const MODEL_WRAPPER_KEYS = ["data", "models", "items", "results"] as const;
+
+/**
+ * Pull model ids out of whatever shape a catalogue endpoint answers with.
+ *
+ * The OpenAI list (`{ object: "list", data: [{ id }] }`) is the common case;
+ * gateways also answer with a bare array, a `models` array, or a map keyed by
+ * model id, and all of those are accepted so one parser works for every
+ * preset.
+ */
+function collectModelIds(value: unknown, depth: number): string[] {
+  if (depth > 3 || value == null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry): string[] => {
+      if (typeof entry === "string") {
+        return [entry];
+      }
+      if (entry && typeof entry === "object") {
+        const record = entry as Record<string, unknown>;
+        for (const key of ["id", "model", "slug", "name"] as const) {
+          if (typeof record[key] === "string") {
+            return [record[key] as string];
+          }
+        }
+      }
+      return [];
+    });
+  }
+  if (typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of MODEL_WRAPPER_KEYS) {
+    if (key in record) {
+      const ids = collectModelIds(record[key], depth + 1);
+      if (ids.length) {
+        return ids;
+      }
+    }
+  }
+  // Some catalogues are a plain map of `{ "<model id>": { ... } }`; the wrapper
+  // keys above are skipped so `object` / `success` metadata cannot leak in.
+  const entries = Object.entries(record).filter(
+    ([key]) =>
+      !(MODEL_WRAPPER_KEYS as readonly string[]).includes(key) &&
+      !["object", "success", "error", "message", "status"].includes(key),
+  );
+  if (
+    entries.length &&
+    entries.every(([, entry]) => entry && typeof entry === "object")
+  ) {
+    return entries.map(([key]) => key);
+  }
+  return [];
+}
+
+export function parseModelIds(payload: unknown): string[] {
+  const ids = collectModelIds(payload, 0)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
+}
+
 function contentToString(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -99,11 +182,20 @@ export function parseChatCompletion(payload: unknown): {
 export function extractErrorMessage(payload: unknown): string {
   if (payload && typeof payload === "object") {
     const body = payload as {
-      error?: { message?: unknown };
+      error?: unknown;
       message?: unknown;
     };
-    if (body.error && typeof body.error.message === "string") {
-      return body.error.message;
+    // ClinePass answers `{ "error": "Unauthorized: ..." }` (a string), while
+    // OpenAI-compatible gateways nest the text under `error.message`.
+    if (typeof body.error === "string" && body.error.trim()) {
+      return body.error;
+    }
+    if (
+      body.error &&
+      typeof body.error === "object" &&
+      typeof (body.error as { message?: unknown }).message === "string"
+    ) {
+      return (body.error as { message: string }).message;
     }
     if (typeof body.message === "string") {
       return body.message;
@@ -454,6 +546,7 @@ export async function chatCompletion(
     const response = await doFetch(endpoint, {
       method: "POST",
       headers: {
+        ...config.headers,
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.apiKey}`,
       },
@@ -494,6 +587,102 @@ export async function chatCompletion(
       model: parsed.model || config.model,
       elapsedMs: Date.now() - startedAt,
     };
+  } catch (error) {
+    if (error instanceof LlmError) {
+      throw error;
+    }
+    const name = (error as { name?: string })?.name;
+    if (name === "AbortError") {
+      throw new LlmError("TIMEOUT", `Request timed out after ${timeoutMs}ms`);
+    }
+    throw new LlmError(
+      "NETWORK",
+      (error as Error)?.message || "Network request failed",
+      { detail: String(error) },
+    );
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+export interface ListModelsOptions {
+  config: EffectiveProviderConfig;
+  /** Injected in tests. */
+  fetchImpl?: typeof fetch;
+  /** Overrides `config.timeoutMs`. */
+  timeoutMs?: number;
+}
+
+/**
+ * Read the provider's model list.
+ *
+ * This is what powers the "fetch models" button in the settings pane: a GET on
+ * the preset's `modelsPath` with the same key and extra headers as a chat
+ * request. ClinePass answers `401` here until a key is supplied, so the key is
+ * required; a provider that exposes an open catalogue simply ignores it.
+ *
+ * Failures are normalized into `LlmError` exactly like `chatCompletion`, so the
+ * pane can print one localized message.
+ */
+export async function fetchModelIds(
+  options: ListModelsOptions,
+): Promise<string[]> {
+  const { config } = options;
+  const endpoint = buildModelsEndpoint(config.baseURL, config.modelsPath);
+  if (!endpoint) {
+    throw new LlmError("NOT_CONFIGURED", "Missing base URL");
+  }
+  const apis = options.fetchImpl ? null : resolveWebApis();
+  const doFetch = options.fetchImpl ?? apis?.fetch ?? globalThis.fetch;
+  if (typeof doFetch !== "function") {
+    throw new LlmError("NETWORK", "fetch is not available in this environment");
+  }
+
+  const timeoutMs = options.timeoutMs ?? config.timeoutMs;
+  const controller = apis
+    ? apis.createAbortController()
+    : typeof AbortController === "function"
+      ? new AbortController()
+      : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...config.headers,
+  };
+  if (config.apiKey) {
+    headers.Authorization = `Bearer ${config.apiKey}`;
+  }
+
+  try {
+    const response = await doFetch(endpoint, {
+      method: "GET",
+      headers,
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      let payload: unknown = null;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        // Keep the raw body as the detail below.
+      }
+      const detail = extractErrorMessage(payload) || text.slice(0, 200);
+      throw new LlmError("HTTP", `HTTP ${response.status}: ${detail}`, {
+        status: response.status,
+        detail,
+      });
+    }
+    const ids = parseModelIds(parseJsonBody(await response.text()));
+    if (!ids.length) {
+      throw new LlmError("EMPTY", "The provider returned no models");
+    }
+    return ids;
   } catch (error) {
     if (error instanceof LlmError) {
       throw error;

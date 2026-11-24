@@ -16,7 +16,7 @@
 
 | 分区       | 内容                                                                             |
 | ---------- | -------------------------------------------------------------------------------- |
-| 服务商     | 服务商预设、API Key、接口地址、模型、温度、最大 tokens                           |
+| 服务商     | 服务商预设、API Key、接口地址、模型（含「获取模型」）、温度、最大 tokens         |
 | 选区类型   | 判定方式（自动 / 一律按词 / 一律按句）、判为「词」的最大词数与字符数             |
 | 上下文     | 划词时带出所在句、划句时带出前后各一句、单句长度上限                             |
 | 提示词模板 | 「划词模板」「划句模板」两组：多套模板的增删改 / 复制、当前模板选择、system 编辑 |
@@ -24,49 +24,56 @@
 
 ## 完整配置表
 
-| 键                         | 类型         | 默认值     | 设置页 | 说明                                                                                             |
-| -------------------------- | ------------ | ---------- | ------ | ------------------------------------------------------------------------------------------------ |
-| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `custom`                                                     |
-| `apiKey`                   | string       | `""`       | ✅     | API Key。以**明文**保存在 prefs 中，见 [隐私与安全](../README.zh-CN.md#隐私与安全)               |
-| `baseURL`                  | string       | `""`       | ✅     | 接口地址；留空使用预设。只写主机名时自动补 `/v1`，末尾斜杠会被去掉                               |
-| `model`                    | string       | `""`       | ✅     | 模型名，如 `gpt-4o-mini` / `deepseek-chat`；留空使用预设                                         |
-| `providerConfigs`          | string(JSON) | `""`       | —      | 按服务商分别保存的 `apiKey` / `baseURL` / `model`，切换预设时自动写入 / 读出                     |
-| `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                   |
-| `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                     |
-| `targetLang`               | string       | `zh-CN`    | —      | 目标语言，原样替换进提示词的 `{targetLang}`                                                      |
-| `sourceLang`               | string       | `auto`     | —      | 源语言，只用于 `{sourceLang}` 变量；默认模板不引用它，由模型自行判断                             |
-| `selectionKindMode`        | string       | `auto`     | ✅     | 选区类型判定：`auto` 自动 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                    |
-| `wordMaxWords`             | number       | `3`        | ✅     | 判为「词」的最大词数，超出按句处理                                                               |
-| `wordMaxChars`             | number       | `40`       | ✅     | 判为「词」的最大字符数，超出按句处理                                                             |
-| `useContext`               | boolean      | `true`     | ✅     | **仅划词**：是否带出所在句；关闭后等同词典式直译                                                 |
-| `sentenceContextNeighbors` | boolean      | `false`    | ✅     | **仅划句**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                             |
-| `maxSentenceChars`         | number       | `400`      | ✅     | 单句上下文长度上限，超出截断并在面板提示                                                         |
-| `promptProfileWord`        | string       | `word`     | ✅     | 划词**当前使用的模板 id**；指向已删除 / 不存在的 id 时回退同类型模板，再回退内置 `word`          |
-| `promptProfileSentence`    | string       | `sentence` | ✅     | 划句**当前使用的模板 id**（同上，回退内置 `sentence`）                                           |
-| `promptProfiles`           | string(JSON) | `""`       | ✅\*   | 提示词库：任意 id 的 `{ name, kind, system, user }`，设置页负责增删改，详见 [提示词](prompts.md) |
-| `showInPopup`              | boolean      | `true`     | ✅     | 是否在划词弹窗中注入「翻译」按钮                                                                 |
-| `autoTranslate`            | boolean      | `false`    | ✅     | 选中文本后自动翻译，译文直接显示在弹窗内；开启后不再显示按钮；未配置 API Key 时静默跳过          |
-| `shortcutEnabled`          | boolean      | `true`     | ✅     | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                              |
-| `popupFontSize`            | number       | `12`       | ✅     | 弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽                                          |
-| `requestTimeoutMs`         | number       | `30000`    | ✅     | 请求超时（毫秒）；超时会提示重试而不是静默失败                                                   |
-| `stream`                   | boolean      | `true`     | ✅     | 流式输出（默认开启）：请求带 `stream: true`，译文边生成边显示；超时按「空闲」重新计时            |
-| `debug`                    | boolean      | `false`    | ✅     | 输出详细日志到 Zotero `帮助 → 调试输出`                                                          |
+| 键                         | 类型         | 默认值     | 设置页 | 说明                                                                                                  |
+| -------------------------- | ------------ | ---------- | ------ | ----------------------------------------------------------------------------------------------------- |
+| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `clinepass` / `custom`                                            |
+| `apiKey`                   | string       | `""`       | ✅     | API Key。以**明文**保存在 prefs 中，见 [隐私与安全](../README.zh-CN.md#隐私与安全)                    |
+| `baseURL`                  | string       | `""`       | ✅     | 接口地址；留空使用预设。只写主机名时自动补 `/v1`，末尾斜杠会被去掉                                    |
+| `model`                    | string       | `""`       | ✅     | 模型名，如 `gpt-4o-mini` / `deepseek-chat` / `cline-pass/glm-5.3`；留空使用预设，可点「获取模型」拉取 |
+| `providerConfigs`          | string(JSON) | `""`       | —      | 按服务商分别保存的 `apiKey` / `baseURL` / `model`，切换预设时自动写入 / 读出                          |
+| `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                        |
+| `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                          |
+| `targetLang`               | string       | `zh-CN`    | —      | 目标语言，原样替换进提示词的 `{targetLang}`                                                           |
+| `sourceLang`               | string       | `auto`     | —      | 源语言，只用于 `{sourceLang}` 变量；默认模板不引用它，由模型自行判断                                  |
+| `selectionKindMode`        | string       | `auto`     | ✅     | 选区类型判定：`auto` 自动 / `alwaysWord` 一律按词 / `alwaysSentence` 一律按句                         |
+| `wordMaxWords`             | number       | `3`        | ✅     | 判为「词」的最大词数，超出按句处理                                                                    |
+| `wordMaxChars`             | number       | `40`       | ✅     | 判为「词」的最大字符数，超出按句处理                                                                  |
+| `useContext`               | boolean      | `true`     | ✅     | **仅划词**：是否带出所在句；关闭后等同词典式直译                                                      |
+| `sentenceContextNeighbors` | boolean      | `false`    | ✅     | **仅划句**：是否取前后各一句填入 `{prevSentence}` / `{nextSentence}`                                  |
+| `maxSentenceChars`         | number       | `400`      | ✅     | 单句上下文长度上限，超出截断并在面板提示                                                              |
+| `promptProfileWord`        | string       | `word`     | ✅     | 划词**当前使用的模板 id**；指向已删除 / 不存在的 id 时回退同类型模板，再回退内置 `word`               |
+| `promptProfileSentence`    | string       | `sentence` | ✅     | 划句**当前使用的模板 id**（同上，回退内置 `sentence`）                                                |
+| `promptProfiles`           | string(JSON) | `""`       | ✅\*   | 提示词库：任意 id 的 `{ name, kind, system, user }`，设置页负责增删改，详见 [提示词](prompts.md)      |
+| `showInPopup`              | boolean      | `true`     | ✅     | 是否在划词弹窗中注入「翻译」按钮                                                                      |
+| `autoTranslate`            | boolean      | `false`    | ✅     | 选中文本后自动翻译，译文直接显示在弹窗内；开启后不再显示按钮；未配置 API Key 时静默跳过               |
+| `shortcutEnabled`          | boolean      | `true`     | ✅     | 是否启用快捷键 `Ctrl/⌘ + Shift + T`                                                                   |
+| `popupFontSize`            | number       | `12`       | ✅     | 弹窗内译文字号（px，限制 8–32）；弹窗宽度随字号等比放宽                                               |
+| `requestTimeoutMs`         | number       | `30000`    | ✅     | 请求超时（毫秒）；超时会提示重试而不是静默失败                                                        |
+| `stream`                   | boolean      | `true`     | ✅     | 流式输出（默认开启）：请求带 `stream: true`，译文边生成边显示；超时按「空闲」重新计时                 |
+| `debug`                    | boolean      | `false`    | ✅     | 输出详细日志到 Zotero `帮助 → 调试输出`                                                               |
 
 \* `promptProfiles` 不直接呈现为输入框，而是由设置页的模板编辑器读写；它存整个提示词库，
 `promptProfileWord` / `promptProfileSentence` 只记录每种类型当前选中的模板 id。
 
 ## 服务商预设
 
-| provider   | baseURL                       | 默认 model      |
-| ---------- | ----------------------------- | --------------- |
-| `openai`   | `https://api.openai.com/v1`   | `gpt-4o-mini`   |
-| `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| `custom`   | 用户填写                      | 用户填写        |
+| provider    | baseURL                        | 默认 model                       |
+| ----------- | ------------------------------ | -------------------------------- |
+| `openai`    | `https://api.openai.com/v1`    | `gpt-4o-mini`                    |
+| `deepseek`  | `https://api.deepseek.com/v1`  | `deepseek-chat`                  |
+| `clinepass` | `https://api.cline.bot/api/v1` | `cline-pass/deepseek-v4.1-flash` |
+| `custom`    | 用户填写                       | 用户填写                         |
 
 - `apiKey` 是必填项，`custom` 也不例外。
 - `custom` 只要兼容 OpenAI 的 `POST {baseURL}/chat/completions` 即可（自建网关、Ollama、LM Studio 等）。
 - 接口地址留空时使用预设；只填主机名（如 `https://api.example.com`）会自动补成
   `https://api.example.com/v1`，地址里已含路径则原样使用。
+- `clinepass` 使用 Cline 的 API（Key 在 `app.cline.bot` 的 **Settings → API Keys** 创建），
+  请求会自动带上 `X-Response-Format: openai`，让非流式响应保持标准的
+  `choices[0].message.content` 结构；模型名为 `cline-pass/...` 形式。
+- 设置页模型输入框旁的 **获取模型** 按钮会请求服务商的模型列表并作为输入建议：
+  普通预设走 `GET {baseURL}/models`，ClinePass 走 `GET {baseURL}/cline-pass/models`
+  （需要有效 Key，否则返回 401）。列表只是建议，仍可手动输入任意模型名。
 
 ## 服务商之间的隔离
 
