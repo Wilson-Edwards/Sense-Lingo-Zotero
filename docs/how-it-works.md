@@ -231,7 +231,7 @@ Content-Type: application/json
 | EPUB 全文 | 每个附件       | 同上；单本上限 200 万字符         |
 | 弹窗译文  | 每个阅读器文档 | 同一文本 60 秒内复用；失败不缓存  |
 | 选区记录  | 每个阅读器文档 | 只保留最近一次，供快捷键使用      |
-| 翻译条目  | 插件 SQLite    | 见下一节                          |
+| 翻译条目  | 每个附件一张表 | 见下一节                          |
 
 ## 翻译缓存与整本预翻译
 
@@ -239,13 +239,21 @@ Content-Type: application/json
 `<数据目录>/sense-lingo-cache.sqlite`（`new Zotero.DBConnection("sense-lingo-cache")`）。
 它和 `zotero.sqlite` 完全隔离：删掉这个文件即清空缓存，Zotero 升级/迁移不会碰到它。
 
+译文按**一本书一张表**存放：`slEntry_<attachmentID>`（表名与 id 的双向校验在 `cache/table.ts`）。
+这样每本书的行不会和其他书挤在同一棵 B-tree 里，删掉一本书就是 `DROP TABLE`（瞬时释放页面，
+不需要 `VACUUM` 重写整个库），统计与清理的成本只和「书的数量」有关，而不是「全部译文的条数」。
+`slAttachment`（每书一行状态）和 `slMeta`（键值）仍是全局表。
+旧版本的单张 `slEntry` 会在升级后首次打开时按 `attachmentID` 自动拆分到各自的表：复制用
+`INSERT OR IGNORE`（可重入，中断后重跑不会产生重复），全部迁完才删除旧表。
+
 **命中键是「词 + 句」，不是「词」。** 同一个 `bank` 在「河岸」和「银行」两个句子里意思不同，
 只按词缓存必然给出错误义项：
 
 ```text
 wordKey     = NFC + 小写 + 去首尾标点
 sentenceKey = sha1(normalizeText(sentence))
-唯一键      = (attachmentID, wordKey, sentenceKey, promptHash, targetLang)
+表名        = slEntry_<attachmentID>
+唯一键      = (wordKey, sentenceKey, promptHash, targetLang)
 ```
 
 - `promptHash` 由当前划词模板的 `system` / `user` 模板 + 目标语言算出。改模板或换目标语言会让旧行
@@ -289,7 +297,7 @@ EPUB 分节 → splitSentences（与点击同源）→ 抽词/频次过滤/每�
 | `src/modules/llm/render.ts` | 变量替换                                             |
 | `src/modules/llm/client.ts` | OpenAI 兼容客户端：地址归一、超时、错误归一          |
 | `src/modules/llm/format.ts` | 划词三行格式归一                                     |
-| `src/modules/cache/*`       | 插件 SQLite：连接/迁移、键计算、点击时命中打分       |
+| `src/modules/cache/*`       | 插件 SQLite：连接/分表迁移、键计算、点击时命中打分   |
 | `src/modules/preprocess/*`  | 整本预翻译：抽词、批量提示词与解析、任务队列、菜单   |
 | `src/modules/ui/*`          | 结果面板与设置页                                     |
 | `addon/prefs.js`            | 全部默认配置                                         |
