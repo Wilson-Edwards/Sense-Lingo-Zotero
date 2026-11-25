@@ -69,7 +69,12 @@ const RESULT_STYLE = [
   "overflow:auto",
   "white-space:pre-wrap",
   "word-break:break-word",
-  "user-select:text",
+  // Zotero's native selection popup disables text selection for its controls.
+  // Keep this `!important` so its broad popup rule cannot make the translation
+  // unselectable again; the vendor forms cover the Firefox-based Zotero UI.
+  "user-select:text!important",
+  "-moz-user-select:text!important",
+  "-webkit-user-select:text!important",
   "line-height:1.5",
   "color:#1a1a1a",
 ].join(";");
@@ -207,6 +212,21 @@ function createResultSlot(doc: Document, fontSize: number): HTMLDivElement {
   const slot = doc.createElement("div");
   slot.style.cssText = RESULT_STYLE;
   slot.style.fontSize = `${fontSize}px`;
+  // The native popup treats interactions with its controls as a reason to
+  // dismiss itself. Do not let a drag, a right-click, or a copy click on the
+  // translation reach that handler. Crucially, no event is prevented here, so
+  // the browser still creates a text selection and shows its normal Copy menu.
+  for (const type of [
+    "pointerdown",
+    "mousedown",
+    "mouseup",
+    "click",
+    "dblclick",
+    "contextmenu",
+    "selectstart",
+  ]) {
+    slot.addEventListener(type, (event) => event.stopPropagation());
+  }
   // Widen with the font so the characters per line stay roughly stable.
   slot.style.maxWidth = `${popupMaxWidth(fontSize)}px`;
   return slot;
