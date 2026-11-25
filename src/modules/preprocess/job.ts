@@ -39,6 +39,9 @@ import { extractCandidates, type PreprocessSection } from "./extract";
 /** Rough character budget per request, after the item-count limit. */
 const BATCH_MAX_CHARS = 6000;
 const WRITE_SAVE_WINDOW_MS = 1000;
+const MAX_REQUEST_ATTEMPTS = 3;
+/** Stop instead of burning tokens on a provider that keeps failing per item. */
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 interface JobItem {
   word: string;
@@ -104,6 +107,7 @@ class PreprocessJob {
   private total = 0;
   private doneCount = 0;
   private failedCount = 0;
+  private consecutiveFailures = 0;
   private signature = "";
   private bookChars = 0;
 
@@ -431,26 +435,69 @@ class PreprocessJob {
     return null;
   }
 
-  private providerConfig(maxTokens: number) {
+  /**
+   * Provider config for one request.
+   *
+   * `allowThinking` exists because some gateways answer "empty response
+   * content" (or HTTP 500) when a reasoning model is asked to skip its
+   * reasoning phase; the last retry therefore drops the no-thinking hint.
+   */
+  private providerConfig(maxTokens: number, allowThinking = false) {
     if (!this.settings) {
       throw new LlmError("NOT_CONFIGURED", "settings not loaded");
     }
     return {
       ...this.settings.provider,
       stream: false,
+      disableThinking: allowThinking
+        ? false
+        : this.settings.provider.disableThinking,
       maxTokens: Math.max(this.settings.provider.maxTokens, maxTokens),
     };
   }
 
+  /**
+   * Run one request with backoff.
+   *
+   * Rate limits, 5xx, network timeouts and empty completions are worth a retry;
+   * auth failures and bad requests are not. The final attempt allows the
+   * model's reasoning phase, which recovers the "empty response content" case
+   * some gateways produce for reasoning models with thinking disabled.
+   */
+  private async requestWithRetry(
+    maxTokens: number,
+    messages: Parameters<typeof chatCompletion>[0]["messages"],
+  ) {
+    const attempts = MAX_REQUEST_ATTEMPTS;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await chatCompletion({
+          config: this.providerConfig(maxTokens, attempt === attempts),
+          messages,
+        });
+      } catch (e) {
+        lastError = e;
+        if (!isRetryableError(e) || this.cancelled || attempt === attempts) {
+          throw e;
+        }
+        const wait = retryDelay(attempt);
+        warn(
+          `request failed (attempt ${attempt}/${attempts}), retrying in ${wait}ms`,
+          describeError(e),
+        );
+        await sleep(wait);
+      }
+    }
+    throw lastError;
+  }
+
   /** One single-item request; used for probes and for the fallback path. */
   private async requestSingle(item: JobItem): Promise<string> {
-    const response = await chatCompletion({
-      config: this.providerConfig(1024),
-      messages: [
-        { role: "system", content: this.systemTemplate },
-        { role: "user", content: item.userPrompt },
-      ],
-    });
+    const response = await this.requestWithRetry(1024, [
+      { role: "system", content: this.systemTemplate },
+      { role: "user", content: item.userPrompt },
+    ]);
     await this.delay();
     return response.content;
   }
@@ -458,14 +505,14 @@ class PreprocessJob {
   /**
    * One batch request. A parse failure is `null` (the caller retries in
    * halves); an empty answer is a parse failure too. Everything else (auth,
-   * network, rate limit) propagates.
+   * network, rate limit) propagates after the retries.
    */
   private async requestBatch(
     items: readonly JobItem[],
   ): Promise<string[] | null> {
-    const response = await chatCompletion({
-      config: this.providerConfig(Math.max(1024, 120 * items.length)),
-      messages: [
+    const response = await this.requestWithRetry(
+      Math.max(1024, 120 * items.length),
+      [
         {
           role: "system",
           content: buildBatchSystem(this.systemTemplate, this.expectedLines),
@@ -475,7 +522,7 @@ class PreprocessJob {
           content: buildBatchUser(items.map((item) => item.userPrompt)),
         },
       ],
-    });
+    );
     await this.delay();
     return parseBatchOutput(response.content, items.length, this.expectedLines);
   }
@@ -511,21 +558,34 @@ class PreprocessJob {
       return;
     }
     if (this.batchEnabled && chunk.length > 1) {
+      let parseFailure = false;
       try {
         const translations = await this.requestBatch(chunk);
         if (translations) {
           await this.write(chunk, translations);
           return;
         }
+        parseFailure = true;
       } catch (e) {
-        // A malformed answer (empty / unparsable body) is worth another try in
-        // smaller pieces; anything else means the provider is unusable now.
-        if (!isBatchParseError(e)) {
+        if (isBatchParseError(e)) {
+          // The body arrived but did not follow the marker contract: a smaller
+          // batch is the cheapest way to find out whether size is the issue.
+          parseFailure = true;
+        } else if (isRetryableError(e)) {
+          // The provider itself failed (5xx / empty answer / network). Batching
+          // is not the suspect here, and waiting on it would stall the whole
+          // book: disable it for this run and give each item its own request.
+          this.batchEnabled = false;
+          warn(
+            "batch request failed after retries, falling back to single requests",
+            describeError(e),
+          );
+        } else {
           this.stopForError(e);
           return;
         }
       }
-      if (depth < 1) {
+      if (parseFailure && depth < 1 && chunk.length > 1) {
         const middle = Math.ceil(chunk.length / 2);
         await this.handleChunk(chunk.slice(0, middle), depth + 1);
         await this.handleChunk(chunk.slice(middle), depth + 1);
@@ -549,6 +609,11 @@ class PreprocessJob {
           return;
         }
         this.failedCount += 1;
+        this.consecutiveFailures += 1;
+        if (this.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          this.stopForError(e);
+          return;
+        }
       }
     }
   }
@@ -570,11 +635,15 @@ class PreprocessJob {
       model: this.settings?.provider.model ?? "",
       source: "preprocess",
     }));
+    let written = 0;
     await this.enqueueWrite(async () => {
-      const written = await putEntries(rows);
+      written = await putEntries(rows);
       this.doneCount += written;
       this.failedCount += rows.length - written;
     });
+    if (written > 0) {
+      this.consecutiveFailures = 0;
+    }
     this.updateProgress();
   }
 
@@ -615,6 +684,47 @@ function isBatchParseError(error: unknown): boolean {
     error instanceof LlmError &&
     (error.code === "PARSE" || error.code === "EMPTY")
   );
+}
+
+/**
+ * Failures that are worth another request.
+ *
+ * A 5xx or an empty completion is usually transient (or caused by a reasoning
+ * model refusing to answer without its thinking phase), while 400/401/403 mean
+ * the request itself must change.
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof LlmError)) {
+    return false;
+  }
+  if (error.code === "NETWORK" || error.code === "TIMEOUT") {
+    return true;
+  }
+  if (error.code === "EMPTY") {
+    return true;
+  }
+  if (error.code !== "HTTP") {
+    return false;
+  }
+  const status = error.status ?? 0;
+  return (
+    status === 0 ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+/** Exponential backoff with a little jitter so parallel retries spread out. */
+function retryDelay(attempt: number): number {
+  const base = Math.max(500, getNumberPref("prefetchDelayMs", 200));
+  const wait = Math.min(8000, base * 2 ** (attempt - 1));
+  return wait + Math.floor(Math.random() * 250);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function describeError(error: unknown): string {
