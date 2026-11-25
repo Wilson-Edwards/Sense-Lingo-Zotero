@@ -93,6 +93,78 @@
   </vbox>
 
   <vbox class="sl-section">
+    <label
+      ><html:h3 data-l10n-id="pref-head-prefetch-provider"></html:h3
+    ></label>
+    <html:div
+      class="sl-block-hint"
+      data-l10n-id="pref-prefetch-provider-hint"
+    ></html:div>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchProvider"
+        data-l10n-id="pref-provider"
+      ></html:label>
+      <html:select
+        id="sl-prefetchProvider"
+        style="min-width: 240px"
+      ></html:select>
+    </hbox>
+    <html:div id="sl-prefetch-provider-hint" class="sl-hint"></html:div>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchApiKey"
+        data-l10n-id="pref-api-key"
+      ></html:label>
+      <html:input
+        type="password"
+        id="sl-prefetchApiKey"
+        style="min-width: 240px"
+        placeholder="sk-..."
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchBaseURL"
+        data-l10n-id="pref-base-url"
+      ></html:label>
+      <html:input
+        type="text"
+        id="sl-prefetchBaseURL"
+        style="min-width: 240px"
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchModelSelect"
+        data-l10n-id="pref-model"
+      ></html:label>
+      <html:select
+        id="sl-prefetchModelSelect"
+        style="min-width: 240px"
+      ></html:select>
+      <html:button
+        id="sl-prefetchModelFetch"
+        data-l10n-id="pref-model-fetch"
+      ></html:button>
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchModel"
+        data-l10n-id="pref-model-custom"
+      ></html:label>
+      <html:input type="text" id="sl-prefetchModel" style="min-width: 240px" />
+    </hbox>
+    <html:div class="sl-hint" data-l10n-id="pref-model-hint"></html:div>
+    <html:div id="sl-prefetch-model-status" class="sl-hint"></html:div>
+  </vbox>
+
+  <vbox class="sl-section">
     <label><html:h3 data-l10n-id="pref-head-kind"></html:h3></label>
 
     <hbox align="center" class="sl-row">

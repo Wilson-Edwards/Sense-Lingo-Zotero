@@ -29,6 +29,7 @@ import { renderPromptFor } from "./llm/render";
 import {
   isConfigured,
   resolveProviderConfig,
+  resolveProviderOverride,
   type EffectiveProviderConfig,
 } from "./llm/providers";
 import { putEntries } from "./cache/db";
@@ -38,7 +39,10 @@ import { getBooleanPref, getNumberPref, getStringPref } from "../utils/prefs";
 import { log, warn } from "../utils/logger";
 
 export interface PluginSettings {
+  /** Provider used by click / shortcut translation. */
   provider: EffectiveProviderConfig;
+  /** Provider used by whole-book preprocessing (may be the same object). */
+  prefetchProvider: EffectiveProviderConfig;
   targetLang: string;
   sourceLang: string;
   kindMode: "auto" | "alwaysWord" | "alwaysSentence";
@@ -68,20 +72,56 @@ function readTemperature(): number {
   return Math.min(Math.max(value, 0), 2);
 }
 
+/**
+ * Request-shape knobs shared by both provider scopes: they describe *how* to
+ * ask, not *who* to ask, so switching the preprocessing provider does not
+ * silently change temperature or the timeout.
+ */
+function readRequestParams() {
+  return {
+    temperature: readTemperature(),
+    maxTokens: getNumberPref("maxTokens", 1024),
+    timeoutMs: getNumberPref("requestTimeoutMs", 30000),
+    stream: getBooleanPref("stream", true),
+  };
+}
+
+/** Provider used by click / shortcut translation. */
+export function readTranslationProviderConfig(): EffectiveProviderConfig {
+  return resolveProviderConfig({
+    provider: getStringPref("provider", "openai"),
+    apiKey: getStringPref("apiKey"),
+    baseURL: getStringPref("baseURL"),
+    model: getStringPref("model"),
+    ...readRequestParams(),
+    disableThinking: getBooleanPref("disableThinking", true),
+  });
+}
+
+/**
+ * Provider used by whole-book preprocessing.
+ *
+ * As long as `prefetchProvider` is empty this returns the translation config
+ * unchanged, so pre-translation keeps working for anyone who never opens the
+ * new section. Once a provider is chosen, its own key / URL / model are used.
+ */
+export function readPrefetchProviderConfig(
+  fallback: EffectiveProviderConfig = readTranslationProviderConfig(),
+): EffectiveProviderConfig {
+  return resolveProviderOverride(fallback, getStringPref("prefetchProvider"), {
+    apiKey: getStringPref("prefetchApiKey"),
+    baseURL: getStringPref("prefetchBaseURL"),
+    model: getStringPref("prefetchModel"),
+    disableThinking: getBooleanPref("disableThinking", true),
+  });
+}
+
 /** Read everything the pipeline needs from prefs, once per request. */
 export function readSettings(): PluginSettings {
+  const provider = readTranslationProviderConfig();
   return {
-    provider: resolveProviderConfig({
-      provider: getStringPref("provider", "openai"),
-      apiKey: getStringPref("apiKey"),
-      baseURL: getStringPref("baseURL"),
-      model: getStringPref("model"),
-      temperature: readTemperature(),
-      maxTokens: getNumberPref("maxTokens", 1024),
-      timeoutMs: getNumberPref("requestTimeoutMs", 30000),
-      stream: getBooleanPref("stream", true),
-      disableThinking: getBooleanPref("disableThinking", true),
-    }),
+    provider,
+    prefetchProvider: readPrefetchProviderConfig(provider),
     targetLang: getStringPref("targetLang", "zh-CN") || "zh-CN",
     sourceLang: getStringPref("sourceLang", "auto") || "auto",
     kindMode: normalizeKindMode(getStringPref("selectionKindMode", "auto")),
@@ -111,14 +151,7 @@ export function readSettings(): PluginSettings {
  * button / shortcut still reports the missing key.
  */
 export function hasUsableProvider(): boolean {
-  return isConfigured(
-    resolveProviderConfig({
-      provider: getStringPref("provider", "openai"),
-      apiKey: getStringPref("apiKey"),
-      baseURL: getStringPref("baseURL"),
-      model: getStringPref("model"),
-    }),
-  );
+  return isConfigured(readTranslationProviderConfig());
 }
 
 export interface TranslateInput {

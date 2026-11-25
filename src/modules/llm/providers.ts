@@ -154,6 +154,21 @@ export function normalizeProviderId(raw: unknown): ProviderId {
 }
 
 /**
+ * Parse a pref value that is allowed to mean "nothing chosen yet".
+ *
+ * `normalizeProviderId` has to answer a concrete provider (the pipeline always
+ * needs one), so it turns anything unknown into `openai`. A scope that can be
+ * *off* — the preprocessing provider follows the translation one by default —
+ * needs the distinction, hence this nullable variant.
+ */
+export function parseProviderId(raw: unknown): ProviderId | null {
+  return typeof raw === "string" &&
+    (PROVIDER_IDS as readonly string[]).includes(raw)
+    ? (raw as ProviderId)
+    : null;
+}
+
+/**
  * Turn a listed model id into something usable in the `model` field.
  *
  * ClinePass documents full `cline-pass/<slug>` ids; a list that returns a bare
@@ -286,6 +301,46 @@ export function canDisableThinking(provider: ProviderId): boolean {
   return Boolean(PROVIDERS[provider].supportsDisableThinking);
 }
 
+/** Settings of a scope that may borrow another scope's provider. */
+export interface ProviderOverrideInput {
+  apiKey?: string;
+  baseURL?: string;
+  model?: string;
+  /** Raw "disable thinking" toggle; the preset decides whether it is honored. */
+  disableThinking?: boolean;
+}
+
+/**
+ * Effective config of a scope that can reuse the main provider.
+ *
+ * An empty or unknown `ownProvider` means "follow the other scope", which is
+ * why preprocessing keeps working for users who configured only one key.
+ * Picking a provider resolves its own key / URL / model against that preset,
+ * while the request-shape knobs (temperature, max tokens, timeout, stream) stay
+ * shared with the fallback so the two scopes behave the same way.
+ */
+export function resolveProviderOverride(
+  fallback: EffectiveProviderConfig,
+  ownProvider: unknown,
+  own: ProviderOverrideInput = {},
+): EffectiveProviderConfig {
+  const provider = parseProviderId(ownProvider);
+  if (!provider) {
+    return fallback;
+  }
+  return resolveProviderConfig({
+    provider,
+    apiKey: own.apiKey,
+    baseURL: own.baseURL,
+    model: own.model,
+    temperature: fallback.temperature,
+    maxTokens: fallback.maxTokens,
+    timeoutMs: fallback.timeoutMs,
+    stream: fallback.stream,
+    disableThinking: own.disableThinking,
+  });
+}
+
 /** A key is required for every provider, `custom` included. */
 export function isConfigured(config: EffectiveProviderConfig): boolean {
   return Boolean(config.apiKey && config.baseURL && config.model);
@@ -385,6 +440,25 @@ export interface ProviderSwitchResult {
 }
 
 /**
+ * Store one provider's active values under its own id (or drop the entry when
+ * every field was cleared). Returns a new map, the input is not mutated.
+ */
+export function parkProviderCredentials(
+  credentials: ProviderCredentials,
+  from: ProviderId,
+  active: ProviderCredentialValues,
+): ProviderCredentials {
+  const parked: ProviderCredentials = { ...credentials };
+  const current = normalizeCredentialValues(active);
+  if (hasCredentialValues(current)) {
+    parked[from] = current;
+  } else {
+    delete parked[from];
+  }
+  return parked;
+}
+
+/**
  * Park the active values under `from` and load the saved values of `to`.
  *
  * Switching presets must not leak one provider's key / URL / model into the
@@ -400,13 +474,7 @@ export function switchProviderCredentials(
   if (from === to) {
     return { credentials, values: { ...active } };
   }
-  const parked: ProviderCredentials = { ...credentials };
-  const current = normalizeCredentialValues(active);
-  if (hasCredentialValues(current)) {
-    parked[from] = current;
-  } else {
-    delete parked[from];
-  }
+  const parked = parkProviderCredentials(credentials, from, active);
   return {
     credentials: parked,
     values: { ...(parked[to] ?? EMPTY_PROVIDER_CREDENTIALS) },

@@ -9,6 +9,7 @@
 
 import { chatCompletion, LlmError } from "../llm/client";
 import { normalizeWordTranslation } from "../llm/format";
+import { isConfigured } from "../llm/providers";
 import { getProfile } from "../llm/prompt";
 import { renderPrompt } from "../llm/render";
 import { getEpubSections } from "../reader/textSource";
@@ -133,6 +134,12 @@ class PreprocessJob {
       this.notifyError(getString("prefetch-need-context"));
       return;
     }
+    // The preprocessing provider can be its own; without a key every request
+    // would fail the same way, so say it once up front.
+    if (!isConfigured(settings.prefetchProvider)) {
+      this.notifyError(getString("prefetch-need-provider"));
+      return;
+    }
     const profile = getProfile(
       settings.profiles,
       settings.wordProfileId,
@@ -208,6 +215,7 @@ class PreprocessJob {
 
     log("preprocess job", {
       attachment: this.attachmentItemID,
+      provider: settings.prefetchProvider.provider,
       planned,
       pending: pending.length,
       batch: this.batchEnabled,
@@ -446,13 +454,12 @@ class PreprocessJob {
     if (!this.settings) {
       throw new LlmError("NOT_CONFIGURED", "settings not loaded");
     }
+    const provider = this.settings.prefetchProvider;
     return {
-      ...this.settings.provider,
+      ...provider,
       stream: false,
-      disableThinking: allowThinking
-        ? false
-        : this.settings.provider.disableThinking,
-      maxTokens: Math.max(this.settings.provider.maxTokens, maxTokens),
+      disableThinking: allowThinking ? false : provider.disableThinking,
+      maxTokens: Math.max(provider.maxTokens, maxTokens),
     };
   }
 
@@ -632,7 +639,7 @@ class PreprocessJob {
       promptHash: this.promptSignature,
       targetLang: this.targetLang,
       profileId: this.profileId,
-      model: this.settings?.provider.model ?? "",
+      model: this.settings?.prefetchProvider.model ?? "",
       source: "preprocess",
     }));
     let written = 0;

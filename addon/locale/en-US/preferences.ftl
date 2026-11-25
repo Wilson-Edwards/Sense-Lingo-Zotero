@@ -19,6 +19,11 @@ pref-max-tokens = Max tokens
 pref-disable-thinking = Disable thinking (skip the reasoning phase — faster and cheaper; on by default)
 pref-disable-thinking-unsupported = This provider does not support the switch (only ClinePass is verified); switch back to ClinePass to use it.
 
+pref-head-prefetch-provider = Pre-translation provider
+pref-prefetch-provider-hint = Pre-translating a whole EPUB can use its own provider; choose "Follow translation provider" to reuse the one above.
+pref-prefetch-follow = Follow translation provider
+pref-prefetch-follow-hint = Following the provider above: pre-translation uses the same API key, base URL and model.
+
 pref-head-kind = Selection kind
 pref-kind-mode = Detection mode
 pref-kind-auto = Auto detect

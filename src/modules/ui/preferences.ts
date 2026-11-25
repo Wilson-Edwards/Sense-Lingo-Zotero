@@ -12,18 +12,19 @@ import { getNumberPref, getPref, setPref, setPrefRaw } from "../../utils/prefs";
 import { clearCache, getCacheStats } from "../cache/db";
 import { fetchModelIds } from "../llm/client";
 import {
-  PROVIDER_FIELD_KEYS,
+  EMPTY_PROVIDER_CREDENTIALS,
   PROVIDER_IDS,
   PROVIDERS,
   canDisableThinking,
   modelChoices,
   normalizeModelId,
   normalizeProviderId,
+  parkProviderCredentials,
   parseProviderCredentials,
+  parseProviderId,
   presetModelIds,
   resolveProviderConfig,
   serializeProviderCredentials,
-  switchProviderCredentials,
   type ProviderCredentialValues,
   type ProviderId,
 } from "../llm/providers";
@@ -64,6 +65,13 @@ const TEXT_KEYS = [
   "temperature",
 ] as const satisfies readonly PrefKey[];
 
+/** Text inputs of the preprocessing provider (their own flat prefs). */
+const PREFETCH_TEXT_KEYS = [
+  "prefetchApiKey",
+  "prefetchBaseURL",
+  "prefetchModel",
+] as const satisfies readonly PrefKey[];
+
 const NUMBER_KEYS = [
   "maxTokens",
   "wordMaxWords",
@@ -94,6 +102,81 @@ const BOOL_KEYS = [
   "prefetchOnOpen",
 ] as const satisfies readonly PrefKey[];
 
+/**
+ * One provider form in the pane. `translation` drives click / shortcut
+ * translation, `preprocess` drives whole-book pre-translation; both read and
+ * write their own flat prefs so the two keys never overwrite each other.
+ */
+type ProviderScope = "translation" | "preprocess";
+
+interface ProviderScopeIds {
+  provider: string;
+  apiKey: string;
+  baseURL: string;
+  modelSelect: string;
+  modelFetch: string;
+  model: string;
+  modelStatus: string;
+}
+
+const PROVIDER_SCOPES: Record<ProviderScope, ProviderScopeIds> = {
+  translation: {
+    provider: "provider",
+    apiKey: "apiKey",
+    baseURL: "baseURL",
+    modelSelect: "modelSelect",
+    modelFetch: "modelFetch",
+    model: "model",
+    modelStatus: "model-status",
+  },
+  preprocess: {
+    provider: "prefetchProvider",
+    apiKey: "prefetchApiKey",
+    baseURL: "prefetchBaseURL",
+    modelSelect: "prefetchModelSelect",
+    modelFetch: "prefetchModelFetch",
+    model: "prefetchModel",
+    modelStatus: "prefetch-model-status",
+  },
+};
+
+interface ProviderScopePrefKeys {
+  provider: "provider" | "prefetchProvider";
+  apiKey: "apiKey" | "prefetchApiKey";
+  baseURL: "baseURL" | "prefetchBaseURL";
+  model: "model" | "prefetchModel";
+  providerConfigs: "providerConfigs" | "prefetchProviderConfigs";
+}
+
+const PROVIDER_SCOPE_PREFS: Record<ProviderScope, ProviderScopePrefKeys> = {
+  translation: {
+    provider: "provider",
+    apiKey: "apiKey",
+    baseURL: "baseURL",
+    model: "model",
+    providerConfigs: "providerConfigs",
+  },
+  preprocess: {
+    provider: "prefetchProvider",
+    apiKey: "prefetchApiKey",
+    baseURL: "prefetchBaseURL",
+    model: "prefetchModel",
+    providerConfigs: "prefetchProviderConfigs",
+  },
+};
+
+/** The provider the scope is set to, or `null` when it follows another scope. */
+function chosenScopeProvider(scope: ProviderScope): ProviderId | null {
+  const raw = getPref(PROVIDER_SCOPE_PREFS[scope].provider);
+  return scope === "translation"
+    ? normalizeProviderId(raw)
+    : parseProviderId(raw);
+}
+
+/** The provider whose preset fills the placeholders / model list. */
+function effectiveScopeProvider(scope: ProviderScope): ProviderId {
+  return chosenScopeProvider(scope) ?? normalizeProviderId(getPref("provider"));
+}
 function byId<T extends HTMLElement>(win: Window, name: string): T | null {
   return win.document.getElementById(`sl-${name}`) as T | null;
 }
@@ -121,6 +204,15 @@ function populateStaticSelects(win: Window): void {
     }
   }
 
+  // The first entry is the empty value: "follow the translation provider".
+  const prefetchSelect = byId<HTMLSelectElement>(win, "prefetchProvider");
+  if (prefetchSelect && !prefetchSelect.options.length) {
+    addOption(win, prefetchSelect, "", getString("pref-prefetch-follow"));
+    for (const id of PROVIDER_IDS) {
+      addOption(win, prefetchSelect, id, PROVIDERS[id].label);
+    }
+  }
+
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
   if (kindSelect && !kindSelect.options.length) {
     addOption(win, kindSelect, "auto", getString("pref-kind-auto"));
@@ -139,12 +231,22 @@ function syncFromPrefs(win: Window): void {
   if (providerSelect) {
     providerSelect.value = normalizeProviderId(getPref("provider"));
   }
+  const prefetchSelect = byId<HTMLSelectElement>(win, "prefetchProvider");
+  if (prefetchSelect) {
+    prefetchSelect.value = parseProviderId(getPref("prefetchProvider")) ?? "";
+  }
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
   if (kindSelect) {
     kindSelect.value = String(getPref("selectionKindMode") || "auto");
   }
 
   for (const key of TEXT_KEYS) {
+    const input = byId<HTMLInputElement>(win, key);
+    if (input) {
+      input.value = String(getPref(key) ?? "");
+    }
+  }
+  for (const key of PREFETCH_TEXT_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
     if (input) {
       input.value = String(getPref(key) ?? "");
@@ -172,34 +274,65 @@ function syncFromPrefs(win: Window): void {
   }
 
   syncPromptTemplates(win);
-  updatePlaceholders(win);
+  updateScopeAvailability(win);
+  updatePlaceholders(win, "translation");
+  updatePlaceholders(win, "preprocess");
   updateThinkingToggle(win);
 }
 
 /** Show the preset values as placeholders so "blank = preset" is discoverable. */
-function updatePlaceholders(win: Window): void {
-  const provider = normalizeProviderId(getPref("provider"));
-  const preset = PROVIDERS[provider];
-  const baseURL = byId<HTMLInputElement>(win, "baseURL");
+function updatePlaceholders(win: Window, scope: ProviderScope): void {
+  const ids = PROVIDER_SCOPES[scope];
+  const preset = PROVIDERS[effectiveScopeProvider(scope)];
+  const baseURL = byId<HTMLInputElement>(win, ids.baseURL);
   if (baseURL) {
     baseURL.placeholder = preset.baseURL || "https://example.com/v1";
   }
-  const model = byId<HTMLInputElement>(win, "model");
+  const model = byId<HTMLInputElement>(win, ids.model);
   if (model) {
     model.placeholder = preset.model || "model-name";
   }
 }
 
 /**
- * Gate the "disable thinking" switch on the preset.
+ * When the preprocessing scope follows the translation provider, its own three
+ * fields are unused: disable them instead of letting the user type into a form
+ * that would be ignored (and keep the flat prefs blank meanwhile).
+ */
+function updateScopeAvailability(win: Window): void {
+  const ids = PROVIDER_SCOPES.preprocess;
+  const following = !parseProviderId(getPref("prefetchProvider"));
+  for (const key of [
+    ids.apiKey,
+    ids.baseURL,
+    ids.modelSelect,
+    ids.modelFetch,
+    ids.model,
+  ]) {
+    const input = byId<HTMLElement>(win, key) as
+      (HTMLElement & { disabled: boolean }) | null;
+    if (input) {
+      input.disabled = following;
+    }
+  }
+  const hint = byId<HTMLElement>(win, "prefetch-provider-hint");
+  if (hint) {
+    hint.textContent = following ? getString("pref-prefetch-follow-hint") : "";
+  }
+}
+
+/**
+ * Gate the "disable thinking" switch on the presets.
  *
- * The request field it controls is only accepted by some gateways, so an
- * unsupported preset keeps the box disabled instead of silently sending
- * something that would be rejected.
+ * The request field it controls is only accepted by some gateways, so the box
+ * stays disabled while neither scope talks to a provider that honors it. Both
+ * scopes share the toggle, hence both are considered.
  */
 function updateThinkingToggle(win: Window): void {
-  const provider = normalizeProviderId(getPref("provider"));
-  const supported = canDisableThinking(provider);
+  const prefetch = parseProviderId(getPref("prefetchProvider"));
+  const supported =
+    canDisableThinking(normalizeProviderId(getPref("provider"))) ||
+    (!!prefetch && canDisableThinking(prefetch));
   const input = byId<HTMLInputElement>(win, "disableThinking");
   if (input) {
     input.disabled = !supported;
@@ -212,41 +345,64 @@ function updateThinkingToggle(win: Window): void {
   }
 }
 
-/** Current contents of the three provider-owned inputs. */
-function readProviderInputs(win: Window): ProviderCredentialValues {
+/** Current contents of one scope's three provider-owned inputs. */
+function readProviderInputs(
+  win: Window,
+  scope: ProviderScope,
+): ProviderCredentialValues {
+  const ids = PROVIDER_SCOPES[scope];
   return {
-    apiKey: byId<HTMLInputElement>(win, "apiKey")?.value.trim() ?? "",
-    baseURL: byId<HTMLInputElement>(win, "baseURL")?.value.trim() ?? "",
-    model: byId<HTMLInputElement>(win, "model")?.value.trim() ?? "",
+    apiKey: byId<HTMLInputElement>(win, ids.apiKey)?.value.trim() ?? "",
+    baseURL: byId<HTMLInputElement>(win, ids.baseURL)?.value.trim() ?? "",
+    model: byId<HTMLInputElement>(win, ids.model)?.value.trim() ?? "",
   };
 }
 
 function writeProviderInputs(
   win: Window,
+  scope: ProviderScope,
   values: ProviderCredentialValues,
 ): void {
-  for (const key of PROVIDER_FIELD_KEYS) {
-    const input = byId<HTMLInputElement>(win, key);
+  const ids = PROVIDER_SCOPES[scope];
+  const prefKeys = PROVIDER_SCOPE_PREFS[scope];
+  const fields: Array<[string, PrefKey, string]> = [
+    [ids.apiKey, prefKeys.apiKey, values.apiKey],
+    [ids.baseURL, prefKeys.baseURL, values.baseURL],
+    [ids.model, prefKeys.model, values.model],
+  ];
+  for (const [domId, prefKey, value] of fields) {
+    const input = byId<HTMLInputElement>(win, domId);
     if (input) {
-      input.value = values[key];
+      input.value = value;
     }
-    setPref(key, values[key]);
+    setPref(prefKey, value);
   }
 }
 
-/** One-line feedback under the model field. */
-function setModelStatus(win: Window, message: string): void {
-  const status = byId<HTMLElement>(win, "model-status");
+/** One-line feedback under a scope's model field. */
+function setModelStatus(
+  win: Window,
+  scope: ProviderScope,
+  message: string,
+): void {
+  const status = byId<HTMLElement>(win, PROVIDER_SCOPES[scope].modelStatus);
   if (status) {
     status.textContent = message;
   }
 }
 
-/** Model ids the dropdown currently offers, kept per pane window. */
-const modelListState = new WeakMap<Window, string[]>();
+/** Model ids each scope's dropdown currently offers, per pane window. */
+const modelListState = new WeakMap<
+  Window,
+  Partial<Record<ProviderScope, string[]>>
+>();
+
+function storedModelIds(win: Window, scope: ProviderScope): string[] {
+  return modelListState.get(win)?.[scope] ?? [];
+}
 
 /**
- * Draw the model dropdown from the offered ids.
+ * Draw a scope's model dropdown from the offered ids.
  *
  * `<datalist>` is never rendered in Zotero's XUL-hosted preferences document,
  * so the choices are real `<option>`s: the first one is the empty value, which
@@ -254,13 +410,14 @@ const modelListState = new WeakMap<Window, string[]>();
  * rest are model ids, and a hand-typed id is appended so the two controls never
  * disagree. The text field below stays free-form for models the list lacks.
  */
-function renderModelSelect(win: Window): void {
-  const select = byId<HTMLSelectElement>(win, "modelSelect");
+function renderModelSelect(win: Window, scope: ProviderScope): void {
+  const ids = PROVIDER_SCOPES[scope];
+  const select = byId<HTMLSelectElement>(win, ids.modelSelect);
   if (!select) {
     return;
   }
-  const provider = normalizeProviderId(getPref("provider"));
-  const current = byId<HTMLInputElement>(win, "model")?.value.trim() ?? "";
+  const provider = effectiveScopeProvider(scope);
+  const current = byId<HTMLInputElement>(win, ids.model)?.value.trim() ?? "";
   select.textContent = "";
   addOption(
     win,
@@ -270,7 +427,7 @@ function renderModelSelect(win: Window): void {
       model: PROVIDERS[provider].model || "-",
     }),
   );
-  for (const id of modelChoices(modelListState.get(win) ?? [], current)) {
+  for (const id of modelChoices(storedModelIds(win, scope), current)) {
     if (id) {
       addOption(win, select, id, id);
     }
@@ -278,24 +435,29 @@ function renderModelSelect(win: Window): void {
   select.value = current;
 }
 
-/** Offer `ids` in the dropdown, keeping the value in the text field. */
-function setModelOptions(win: Window, ids: readonly string[]): void {
-  modelListState.set(win, [...ids]);
-  renderModelSelect(win);
+/** Offer `ids` in a scope's dropdown, keeping the value in the text field. */
+function setModelOptions(
+  win: Window,
+  scope: ProviderScope,
+  ids: readonly string[],
+): void {
+  const state = modelListState.get(win) ?? {};
+  state[scope] = [...ids];
+  modelListState.set(win, state);
+  renderModelSelect(win, scope);
 }
 
 /**
- * Reset the dropdown to the preset's own models.
+ * Reset a scope's dropdown to the preset's own models.
  *
  * ClinePass publishes no catalogue endpoint for its subscription aliases, so
  * this list is the only source there; seeding it means the pane is usable
  * before the first request (and before a key is entered). Switching presets
  * re-seeds, so another provider's models cannot be picked.
  */
-function seedModelOptions(win: Window): void {
-  const provider = normalizeProviderId(getPref("provider"));
-  setModelOptions(win, presetModelIds(provider));
-  setModelStatus(win, "");
+function seedModelOptions(win: Window, scope: ProviderScope): void {
+  setModelOptions(win, scope, presetModelIds(effectiveScopeProvider(scope)));
+  setModelStatus(win, scope, "");
 }
 
 /**
@@ -303,21 +465,32 @@ function seedModelOptions(win: Window): void {
  *
  * ClinePass answers on the shared catalogue, which carries none of its
  * `cline-pass/...` aliases, so the result collapses back to the preset list;
- * the status line reports what was actually offered.
+ * the status line reports what was actually offered. A scope that follows the
+ * other one has no provider of its own, so its button is disabled and this is a
+ * no-op.
  */
-async function loadModelOptions(win: Window): Promise<void> {
-  const button = byId<HTMLButtonElement>(win, "modelFetch");
-  const values = readProviderInputs(win);
+async function loadModelOptions(
+  win: Window,
+  scope: ProviderScope,
+): Promise<void> {
+  const provider = chosenScopeProvider(scope);
+  if (!provider) {
+    return;
+  }
+  const button = byId<HTMLButtonElement>(
+    win,
+    PROVIDER_SCOPES[scope].modelFetch,
+  );
+  const values = readProviderInputs(win, scope);
   if (!values.apiKey) {
-    setModelStatus(win, getString("pref-model-status-need-key"));
+    setModelStatus(win, scope, getString("pref-model-status-need-key"));
     return;
   }
 
-  const provider = normalizeProviderId(getPref("provider"));
   if (button) {
     button.disabled = true;
   }
-  setModelStatus(win, getString("pref-model-status-loading"));
+  setModelStatus(win, scope, getString("pref-model-status-loading"));
   try {
     const ids = await fetchModelIds({
       config: resolveProviderConfig({
@@ -330,18 +503,21 @@ async function loadModelOptions(win: Window): Promise<void> {
     });
     setModelOptions(
       win,
+      scope,
       ids.map((id) => normalizeModelId(provider, id)),
     );
     setModelStatus(
       win,
+      scope,
       getString("pref-model-status-loaded", { count: ids.length }),
     );
   } catch (e) {
     // Keep the preset list on screen: a failed fetch must not leave the pane
     // with no choices at all.
-    seedModelOptions(win);
+    seedModelOptions(win, scope);
     setModelStatus(
       win,
+      scope,
       getString("pref-model-status-failed", {
         error: (e as Error)?.message || String(e),
       }),
@@ -361,35 +537,69 @@ async function loadModelOptions(win: Window): Promise<void> {
  * triggers one fetch on open instead of leaving the dropdown with just the
  * "use preset" entry.
  */
-function maybeAutoFetchModelOptions(win: Window): void {
-  const provider = normalizeProviderId(getPref("provider"));
-  if (presetModelIds(provider).length) {
+function maybeAutoFetchModelOptions(win: Window, scope: ProviderScope): void {
+  const provider = chosenScopeProvider(scope);
+  if (!provider || presetModelIds(provider).length) {
     return;
   }
-  if (!readProviderInputs(win).apiKey) {
+  if (!readProviderInputs(win, scope).apiKey) {
     return;
   }
-  void loadModelOptions(win);
+  void loadModelOptions(win, scope);
 }
 
 /**
  * Switching presets must also switch the saved key / URL / model.
  *
- * The flat prefs always describe the active provider (the pipeline reads them),
- * while `providerConfigs` remembers the other providers, so going
- * OpenAI -> DeepSeek -> OpenAI restores each side's own values.
+ * The flat prefs always describe the scope's active provider (the pipeline
+ * reads them), while its `providerConfigs` pref remembers the other providers,
+ * so OpenAI -> DeepSeek -> OpenAI restores each side's own values. Passing `""`
+ * (only the preprocessing scope allows it) means "follow the translation
+ * provider": the active values are archived and the flat prefs are blanked, so
+ * follow mode is a real fallback instead of a stale copy.
  */
-function switchProvider(win: Window, next: ProviderId): void {
-  const previous = normalizeProviderId(getPref("provider"));
-  const { credentials, values } = switchProviderCredentials(
-    parseProviderCredentials(getPref("providerConfigs")),
-    previous,
-    next,
-    readProviderInputs(win),
+function switchProvider(
+  win: Window,
+  scope: ProviderScope,
+  next: ProviderId | "",
+): void {
+  const prefKeys = PROVIDER_SCOPE_PREFS[scope];
+  const previous = chosenScopeProvider(scope);
+  const stored = parseProviderCredentials(getPref(prefKeys.providerConfigs));
+  const parked = previous
+    ? parkProviderCredentials(stored, previous, readProviderInputs(win, scope))
+    : stored;
+  setPref(prefKeys.providerConfigs, serializeProviderCredentials(parked));
+  setPref(prefKeys.provider, next);
+  writeProviderInputs(
+    win,
+    scope,
+    next
+      ? (parked[next] ?? EMPTY_PROVIDER_CREDENTIALS)
+      : EMPTY_PROVIDER_CREDENTIALS,
   );
-  setPref("providerConfigs", serializeProviderCredentials(credentials));
-  setPref("provider", next);
-  writeProviderInputs(win, values);
+}
+
+/** React to a scope's preset select: park/load values and refresh the pane. */
+function onProviderChanged(win: Window, scope: ProviderScope): void {
+  const select = byId<HTMLSelectElement>(win, PROVIDER_SCOPES[scope].provider);
+  const raw = select?.value ?? "";
+  const next =
+    scope === "translation"
+      ? normalizeProviderId(raw)
+      : (parseProviderId(raw) ?? "");
+  switchProvider(win, scope, next);
+  updateScopeAvailability(win);
+  updatePlaceholders(win, scope);
+  updateThinkingToggle(win);
+  seedModelOptions(win, scope);
+  maybeAutoFetchModelOptions(win, scope);
+  // A following preprocessing form mirrors the translation provider, so its
+  // placeholders and preset model list must move with it.
+  if (scope === "translation" && !chosenScopeProvider("preprocess")) {
+    updatePlaceholders(win, "preprocess");
+    seedModelOptions(win, "preprocess");
+  }
 }
 
 /** DOM ids of one kind's preset editor. */
@@ -669,36 +879,39 @@ async function refreshCacheStats(win: Window): Promise<void> {
 const bound = new WeakSet<Window>();
 
 function bindEvents(win: Window): void {
-  const providerSelect = byId<HTMLSelectElement>(win, "provider");
-  providerSelect?.addEventListener("change", () => {
-    switchProvider(win, normalizeProviderId(providerSelect.value));
-    updatePlaceholders(win);
-    updateThinkingToggle(win);
-    seedModelOptions(win);
-    maybeAutoFetchModelOptions(win);
-  });
+  // Both provider forms behave identically; only their DOM ids and prefs differ.
+  for (const scope of ["translation", "preprocess"] as const) {
+    const ids = PROVIDER_SCOPES[scope];
 
-  byId<HTMLButtonElement>(win, "modelFetch")?.addEventListener("click", () => {
-    void loadModelOptions(win);
-  });
+    byId<HTMLSelectElement>(win, ids.provider)?.addEventListener("change", () =>
+      onProviderChanged(win, scope),
+    );
 
-  // Two controls, one value: picking an option writes the text field (and the
-  // pref), typing in the field re-selects the matching option (or adds one).
-  byId<HTMLSelectElement>(win, "modelSelect")?.addEventListener(
-    "change",
-    (event) => {
-      const select = event.target as HTMLSelectElement;
-      const input = byId<HTMLInputElement>(win, "model");
-      if (input) {
-        input.value = select.value;
-      }
-      setPref("model", select.value);
-      renderModelSelect(win);
-    },
-  );
-  byId<HTMLInputElement>(win, "model")?.addEventListener("change", () => {
-    renderModelSelect(win);
-  });
+    byId<HTMLButtonElement>(win, ids.modelFetch)?.addEventListener(
+      "click",
+      () => {
+        void loadModelOptions(win, scope);
+      },
+    );
+
+    // Two controls, one value: picking an option writes the text field (and the
+    // pref), typing in the field re-selects the matching option (or adds one).
+    byId<HTMLSelectElement>(win, ids.modelSelect)?.addEventListener(
+      "change",
+      (event) => {
+        const select = event.target as HTMLSelectElement;
+        const input = byId<HTMLInputElement>(win, ids.model);
+        if (input) {
+          input.value = select.value;
+        }
+        setPref(PROVIDER_SCOPE_PREFS[scope].model, select.value);
+        renderModelSelect(win, scope);
+      },
+    );
+    byId<HTMLInputElement>(win, ids.model)?.addEventListener("change", () => {
+      renderModelSelect(win, scope);
+    });
+  }
 
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
   kindSelect?.addEventListener("change", () => {
@@ -706,6 +919,11 @@ function bindEvents(win: Window): void {
   });
 
   for (const key of TEXT_KEYS) {
+    const input = byId<HTMLInputElement>(win, key);
+    input?.addEventListener("change", () => setPref(key, input.value.trim()));
+  }
+
+  for (const key of PREFETCH_TEXT_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
     input?.addEventListener("change", () => setPref(key, input.value.trim()));
   }
@@ -812,8 +1030,10 @@ function bindEvents(win: Window): void {
 export function registerPrefsScripts(win: Window): void {
   populateStaticSelects(win);
   syncFromPrefs(win);
-  seedModelOptions(win);
-  maybeAutoFetchModelOptions(win);
+  seedModelOptions(win, "translation");
+  seedModelOptions(win, "preprocess");
+  maybeAutoFetchModelOptions(win, "translation");
+  maybeAutoFetchModelOptions(win, "preprocess");
   void refreshCacheStats(win);
   if (!bound.has(win)) {
     bound.add(win);

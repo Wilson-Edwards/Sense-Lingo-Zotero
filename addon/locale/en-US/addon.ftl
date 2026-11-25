@@ -31,6 +31,7 @@ prefetch-confirm = About { $entries } entries, roughly { $requests } requests. C
 prefetch-summary = Done: { $done } / { $total } written, { $failed } failed
 prefetch-paused-error = Paused: { $reason }. Lower "concurrent requests" to 1 (or reduce the batch size) and run it again; finished entries are skipped.
 prefetch-need-context = Enable "include the containing sentence" first; otherwise the cache can never match.
+prefetch-need-provider = The pre-translation provider is not configured: set its API key in settings, or switch it to follow the translation provider.
 prefetch-not-epub = Select an EPUB attachment.
 prefetch-no-text = Could not read this EPUB's text.
 prefetch-no-entries = No word passed the frequency threshold; lower "minimum occurrences" and retry.

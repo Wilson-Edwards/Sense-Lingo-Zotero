@@ -7,6 +7,15 @@ pref("baseURL", "");
 pref("model", "");
 // Per-provider apiKey/baseURL/model, keyed by provider id (JSON).
 pref("providerConfigs", "");
+
+// Preprocessing (whole-book pre-translation) can use its own provider.
+// An empty `prefetchProvider` means "follow the translation provider above".
+pref("prefetchProvider", "");
+pref("prefetchApiKey", "");
+pref("prefetchBaseURL", "");
+pref("prefetchModel", "");
+pref("prefetchProviderConfigs", "");
+
 pref("temperature", "0.3");
 pref("maxTokens", 1024);
 

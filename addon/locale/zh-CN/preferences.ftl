@@ -19,6 +19,11 @@ pref-max-tokens = 最大 tokens
 pref-disable-thinking = 禁止思考（不生成推理过程，更快、更省额度；默认开启）
 pref-disable-thinking-unsupported = 当前服务商不支持该开关（仅 ClinePass 实测生效），切回 ClinePass 后可用。
 
+pref-head-prefetch-provider = 预处理服务商
+pref-prefetch-provider-hint = 预翻译整本 EPUB 时可单独使用一套服务商；选「跟随翻译服务商」就与上方完全一致。
+pref-prefetch-follow = 跟随翻译服务商
+pref-prefetch-follow-hint = 当前跟随上方服务商：预翻译使用同一套 API Key、接口地址与模型。
+
 pref-head-kind = 选区类型
 pref-kind-mode = 判定方式
 pref-kind-auto = 自动判定

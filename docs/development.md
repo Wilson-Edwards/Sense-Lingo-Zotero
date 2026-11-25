@@ -52,21 +52,28 @@ cp .env.example .env
 
 ## 测试
 
-`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，13 个文件、168 个用例：
+`npm test` 用 [Vitest](https://vitest.dev/) 直接跑纯函数，20 个文件、292 个用例：
 
 | 测试文件                      | 用例 | 覆盖内容                                                                |
 | ----------------------------- | ---- | ----------------------------------------------------------------------- |
 | `sentence.test.ts`            | 28   | 分句、缩写、断词、空白不敏感匹配、指纹消歧、前后句、截断                |
+| `sentenceSplit.test.ts`       | 9    | 切句边界与空白折叠                                                      |
 | `prompt.test.ts`              | 46   | 模板库解析与迁移、增删改/复制、路由与回退、默认模板判定、变量渲染       |
+| `batchPrompt.test.ts`         | 17   | 批量提示词拼装、`[[n]]` 解析与行数校验                                  |
+| `preprocessExtract.test.ts`   | 8    | EPUB 抽词、频次过滤、每词句子采样                                       |
 | `selectionKind.test.ts`       | 19   | 1/3/4 词边界、标点、缩写、跨行、中英混排、纯数字、强制模式              |
-| `chatCompletion.test.ts`      | 12   | 请求构造、地址归一、响应解析、错误归一、服务商预设                      |
+| `chatCompletion.test.ts`      | 16   | 请求构造、地址归一、响应解析、错误归一、服务商预设                      |
 | `chatStream.test.ts`          | 14   | SSE 增量解析、跨包拼接、`[DONE]`、JSON 回退、流内错误、不可读 body 降级 |
 | `client.test.ts`              | 12   | 端点拼接、响应 / 流式分片解析                                           |
+| `providerModels.test.ts`      | 38   | 模型清单解析、按端点 / 前缀筛选、预设回退、模型下拉选项                 |
+| `providerCredentials.test.ts` | 14   | 服务商配置的存取与切换隔离、预处理服务商跟随 / 覆盖                     |
 | `llmRuntime.test.ts`          | 7    | `fetch` / `AbortController` / `TextDecoder` 的作用域选择                |
+| `cacheKeys.test.ts`           | 10   | 句子 / 单词 / 提示词哈希的稳定性                                        |
+| `cacheLookup.test.ts`         | 12   | 缓存命中打分、严格 / 宽松句子匹配                                       |
+| `cacheTable.test.ts`          | 7    | 缓存表读写与去重                                                        |
 | `popupTranslation.test.ts`    | 10   | 请求共享、60 秒缓存、失败不缓存                                         |
 | `popupStream.test.ts`         | 6    | 弹窗重渲染时的增量回放、脱离 DOM 的槽位回收                             |
 | `popupFontSize.test.ts`       | 9    | 字号钳制、弹窗宽度                                                      |
-| `providerCredentials.test.ts` | 8    | 服务商配置的存取与切换隔离                                              |
 | `format.test.ts`              | 6    | 音标标签拆行                                                            |
 | `selectionAnchor.test.ts`     | 4    | 锚点块文本与指纹提取                                                    |
 

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_PROVIDER_CREDENTIALS,
+  parkProviderCredentials,
   parseProviderCredentials,
+  parseProviderId,
+  resolveProviderConfig,
+  resolveProviderOverride,
   serializeProviderCredentials,
   switchProviderCredentials,
 } from "../src/modules/llm/providers";
@@ -108,5 +112,90 @@ describe("provider credentials", () => {
       baseURL: "",
       model: "",
     });
+  });
+
+  it("parks one provider's values without loading another", () => {
+    const parked = parkProviderCredentials({}, "deepseek", deepseekValues);
+    expect(parked).toEqual({ deepseek: deepseekValues });
+
+    // Clearing every field drops the archived entry instead of storing blanks.
+    expect(
+      parkProviderCredentials(parked, "deepseek", {
+        apiKey: " ",
+        baseURL: "",
+        model: "",
+      }),
+    ).toEqual({});
+  });
+});
+
+describe("parseProviderId", () => {
+  it('distinguishes a real preset from "nothing chosen"', () => {
+    expect(parseProviderId("deepseek")).toBe("deepseek");
+    expect(parseProviderId("clinepass")).toBe("clinepass");
+    expect(parseProviderId("")).toBeNull();
+    expect(parseProviderId("   ")).toBeNull();
+    expect(parseProviderId("nope")).toBeNull();
+    expect(parseProviderId(undefined)).toBeNull();
+    expect(parseProviderId(42)).toBeNull();
+  });
+});
+
+describe("resolveProviderOverride", () => {
+  const translation = resolveProviderConfig({
+    provider: "openai",
+    apiKey: "sk-openai",
+    temperature: 0.2,
+    maxTokens: 512,
+    timeoutMs: 10000,
+    stream: false,
+  });
+
+  it("follows the fallback while no provider is chosen", () => {
+    expect(resolveProviderOverride(translation, "", {})).toBe(translation);
+    expect(
+      resolveProviderOverride(translation, "nope", { apiKey: "sk-x" }),
+    ).toBe(translation);
+  });
+
+  it("uses its own key, URL and model but keeps the request knobs", () => {
+    const config = resolveProviderOverride(translation, "clinepass", {
+      apiKey: "sk-cline",
+      model: "cline-pass/glm-5.3",
+    });
+    expect(config.provider).toBe("clinepass");
+    expect(config.apiKey).toBe("sk-cline");
+    expect(config.baseURL).toBe("https://api.cline.bot/api/v1");
+    expect(config.model).toBe("cline-pass/glm-5.3");
+    expect(config.headers).toEqual({ "X-Response-Format": "openai" });
+    expect(config.temperature).toBe(0.2);
+    expect(config.maxTokens).toBe(512);
+    expect(config.timeoutMs).toBe(10000);
+    expect(config.stream).toBe(false);
+  });
+
+  it("only asks for no-thinking where the override preset supports it", () => {
+    expect(
+      resolveProviderOverride(translation, "clinepass", { apiKey: "k" })
+        .disableThinking,
+    ).toBe(true);
+    expect(
+      resolveProviderOverride(translation, "openai", { apiKey: "k" })
+        .disableThinking,
+    ).toBe(false);
+    // An explicit opt-out still wins over a supporting preset.
+    expect(
+      resolveProviderOverride(translation, "clinepass", {
+        apiKey: "k",
+        disableThinking: false,
+      }).disableThinking,
+    ).toBe(false);
+  });
+
+  it("falls back to the override preset's own defaults", () => {
+    const config = resolveProviderOverride(translation, "deepseek", {});
+    expect(config.baseURL).toBe("https://api.deepseek.com/v1");
+    expect(config.model).toBe("deepseek-chat");
+    expect(config.apiKey).toBe("");
   });
 });

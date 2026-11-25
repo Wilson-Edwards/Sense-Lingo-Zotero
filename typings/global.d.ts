@@ -21,6 +21,11 @@ declare namespace _ZoteroTypes {
       baseURL: string;
       model: string;
       providerConfigs: string;
+      prefetchProvider: string;
+      prefetchApiKey: string;
+      prefetchBaseURL: string;
+      prefetchModel: string;
+      prefetchProviderConfigs: string;
       temperature: string;
       maxTokens: number;
       targetLang: string;
