@@ -13,6 +13,13 @@ declare const _globalThis: {
 
 declare var addon: import("../src/addon").default;
 
+declare namespace Zotero {
+  namespace DataDirectory {
+    /** Absolute path to `<data dir>/<name>.sqlite` (`ext` replaces `.sqlite`). */
+    function getDatabase(name: string, ext?: string): string;
+  }
+}
+
 declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {

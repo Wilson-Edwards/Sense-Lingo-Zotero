@@ -1,10 +1,19 @@
 /**
  * Plugin-private SQLite cache.
  *
- * `new Zotero.DBConnection("sense-lingo-cache")` resolves to
- * `<data dir>/sense-lingo-cache.sqlite` (`Zotero.DataDirectory.getDatabase()`
- * appends the extension), so the cache is fully isolated from `zotero.sqlite`:
- * deleting the file clears it, and a Zotero upgrade never touches it.
+ * The file is `<data dir>/sense-lingo-cache.sqlite`
+ * (`Zotero.DataDirectory.getDatabase()` appends the extension), so the cache is
+ * fully isolated from `zotero.sqlite`: deleting the file clears it, and a
+ * Zotero upgrade never touches it.
+ *
+ * The connection is opened by absolute path on purpose. A name-based
+ * `Zotero.DBConnection` runs `PRAGMA integrity_check` on the next launch
+ * whenever the previous session left a non-empty `-wal` file (Dock quit that
+ * didn't finish its checkpoint, a crash, or a plugin reload). That check runs
+ * synchronously on the main thread and freezes the UI behind a
+ * "checking database integrity" progress bar. A path-based connection is
+ * treated as an external database and skips the check; the cache is disposable,
+ * so nothing here needs verifying, and WAL is still enabled below for writes.
  *
  * Translations live in one table per attachment (`slEntry_<attachmentID>`, see
  * `./table.ts`): a book's rows never share pages with another book, every query
@@ -218,6 +227,7 @@ export async function getCacheDb(): Promise<Connection | null> {
   if (conn !== undefined) {
     return conn;
   }
+  let db: Connection | undefined;
   try {
     if (
       typeof Zotero === "undefined" ||
@@ -230,13 +240,30 @@ export async function getCacheDb(): Promise<Connection | null> {
       conn = null;
       return null;
     }
-    const db = new Zotero.DBConnection(DB_NAME);
+    db = new Zotero.DBConnection(Zotero.DataDirectory.getDatabase(DB_NAME));
+    // A path-based connection is external, so Zotero leaves the journal mode
+    // alone. Set it here to keep bulk writes from paying an fsync per commit.
+    try {
+      await db.queryAsync("PRAGMA journal_mode=WAL");
+      await db.queryAsync("PRAGMA synchronous=NORMAL");
+    } catch (e) {
+      // A filesystem that can't do WAL (e.g. a network share) still works with
+      // the default journal mode; it only writes slower.
+      warn("cache db: WAL unavailable, using the default journal mode", e);
+    }
     await migrate(db);
     conn = db;
     log("cache db ready", db.path);
   } catch (e) {
     warn("cache db unavailable, falling back to AI", e);
     conn = null;
+    if (db) {
+      try {
+        await db.closeDatabase(false);
+      } catch (closeError) {
+        warn("failed to close unusable cache db", closeError);
+      }
+    }
   }
   return conn;
 }
