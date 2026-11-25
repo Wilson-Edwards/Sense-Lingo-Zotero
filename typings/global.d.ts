@@ -42,6 +42,17 @@ declare namespace _ZoteroTypes {
       stream: boolean;
       disableThinking: boolean;
       debug: boolean;
+      cacheEnabled: boolean;
+      cacheStrictSentence: boolean;
+      cacheSingleCandidateFallback: boolean;
+      autoCacheOnMiss: boolean;
+      prefetchConcurrency: number;
+      prefetchBatchSize: number;
+      prefetchMinOccurrences: number;
+      prefetchMaxWords: number;
+      prefetchMaxSentencesPerWord: number;
+      prefetchDelayMs: number;
+      prefetchOnOpen: boolean;
     };
   }
 }

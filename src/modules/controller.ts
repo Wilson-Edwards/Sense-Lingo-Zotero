@@ -106,7 +106,31 @@ export function copyToClipboard(text: string): boolean {
  * the translation, so all UI state beyond that is reduced to an error message.
  */
 export type InlineTranslation =
-  { ok: true; translation: string } | { ok: false; message: string };
+  | {
+      ok: true;
+      translation: string;
+      /** The answer came from the local cache, not from the provider. */
+      fromCache?: boolean;
+      cachedAt?: number;
+    }
+  | { ok: false; message: string };
+
+/**
+ * Human-readable age of a cached entry. The panel shows "cache · 3 days ago"
+ * instead of a model name, because there was no model call at all.
+ */
+function formatCacheAge(cachedAt?: number): string {
+  const elapsed = Math.max(0, Date.now() - (cachedAt ?? Date.now()));
+  const minutes = Math.max(1, Math.round(elapsed / 60_000));
+  if (minutes < 60) {
+    return getString("cache-age-minutes", { count: minutes });
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return getString("cache-age-hours", { count: hours });
+  }
+  return getString("cache-age-days", { count: Math.round(hours / 24) });
+}
 
 /**
  * Translate `text` for the reader selection popup, where nothing but the plain
@@ -132,7 +156,12 @@ export async function translateInline(
       fingerprint: target.anchor?.fingerprint,
       onDelta,
     });
-    return { ok: true, translation: result.translation };
+    return {
+      ok: true,
+      translation: result.translation,
+      fromCache: result.fromCache,
+      cachedAt: result.cachedAt,
+    };
   } catch (err) {
     logError("translate failed", err);
     return { ok: false, message: messageForError(err) };
@@ -199,7 +228,10 @@ export async function translateAndShow(
    */
   let runId = 0;
 
-  const run = async (nextKind?: SelectionKind): Promise<void> => {
+  const run = async (
+    nextKind?: SelectionKind,
+    refresh = false,
+  ): Promise<void> => {
     const runToken = ++runId;
     if (nextKind) {
       currentKind = nextKind;
@@ -254,7 +286,7 @@ export async function translateAndShow(
       onSelectProfile: selectProfile,
       onRetry: (prompt) => {
         pendingPrompt = prompt;
-        void run();
+        void run(undefined, true);
       },
       onCopy: () => undefined,
       onClose: () => hidePanel(target.doc),
@@ -270,6 +302,9 @@ export async function translateAndShow(
         kindOverride: currentKind,
         profileIdOverride: profileForThisRun,
         userPromptOverride: promptForThisRun,
+        // "Retry" means "ask the model again"; the cache would return the same
+        // stored answer the user just rejected.
+        skipCache: refresh,
         // With streaming on, the panel shows text as it arrives instead of
         // waiting for the whole answer.
         onDelta: (partial) => {
@@ -298,7 +333,11 @@ export async function translateAndShow(
           profileOptions,
           usedFallback: result.usedFallback,
           userPrompt: result.userPrompt,
-          meta: `${result.model} · ${result.elapsedMs}ms`,
+          meta: result.fromCache
+            ? getString("panel-cache-meta", {
+                age: formatCacheAge(result.cachedAt),
+              })
+            : `${result.model} · ${result.elapsedMs}ms`,
         },
         {
           onFlipKind: (kind) => {
@@ -309,7 +348,7 @@ export async function translateAndShow(
           onSelectProfile: selectProfile,
           onRetry: (prompt) => {
             pendingPrompt = prompt;
-            void run();
+            void run(undefined, true);
           },
           onCopy: () => copyToClipboard(result.translation),
           onClose: () => hidePanel(target.doc),
@@ -338,7 +377,7 @@ export async function translateAndShow(
           onSelectProfile: selectProfile,
           onRetry: (prompt) => {
             pendingPrompt = prompt;
-            void run();
+            void run(undefined, true);
           },
           onCopy: () => undefined,
           onClose: () => hidePanel(target.doc),

@@ -70,12 +70,20 @@ export function getAttachmentText(
 export function clearAttachmentTextCache(): void {
   cache.clear();
   epubCache.clear();
+  epubSectionCache.clear();
 }
 
 /** Hard cap so a huge book cannot freeze the UI thread. */
 const MAX_EPUB_CHARS = 2_000_000;
 
 const epubCache = new Map<number, Promise<string | null>>();
+
+export interface EpubSectionText {
+  href: string;
+  text: string;
+}
+
+const epubSectionCache = new Map<number, Promise<EpubSectionText[] | null>>();
 
 interface EpubSection {
   href?: string;
@@ -90,17 +98,16 @@ interface EpubModule {
 }
 
 /**
- * Last-resort text source for EPUB.
+ * Per-section text of an EPUB.
  *
- * Zotero's `Item.attachmentText` has no on-demand extraction for EPUB (only PDF
- * does), so an unindexed book returns an empty string. We then reuse the very
- * module Zotero uses for indexing (`chrome://zotero/content/EPUB.mjs`) and
- * concatenate the sections the same way.
- *
- * Everything is guarded: this touches internal Zotero APIs, so any failure must
- * degrade to "no context" instead of breaking the translation.
+ * Preprocessing needs the section boundaries: concatenating first and cutting
+ * sentences afterwards would join the last sentence of one chapter to the first
+ * of the next. The extraction rules are exactly the ones `getEpubFullText()`
+ * has always used (`chrome://zotero/content/EPUB.mjs`, `body.innerText`).
  */
-async function readEpubText(attachmentItemID: number): Promise<string | null> {
+async function readEpubSections(
+  attachmentItemID: number,
+): Promise<EpubSectionText[] | null> {
   try {
     const item = Zotero.Items.get(attachmentItemID);
     if (!item || !item.isAttachment()) {
@@ -128,21 +135,19 @@ async function readEpubText(attachmentItemID: number): Promise<string | null> {
     }
     const epub = new EPUB(path);
     try {
-      let text = "";
+      const sections: EpubSectionText[] = [];
       for await (const section of epub.getSectionDocuments(path)) {
         const body = section?.doc?.body;
         if (!body) {
           continue;
         }
-        text += `${(body as HTMLElement).innerText || body.textContent || ""}\n`;
-        if (text.length >= MAX_EPUB_CHARS) {
-          log("EPUB text truncated at", MAX_EPUB_CHARS, "chars");
-          break;
-        }
+        sections.push({
+          href: section.href ?? "",
+          text: (body as HTMLElement).innerText || body.textContent || "",
+        });
       }
-      const trimmed = text.trim();
-      log("extracted EPUB text", trimmed.length, "chars");
-      return trimmed || null;
+      log("extracted EPUB sections", sections.length);
+      return sections;
     } finally {
       // EPUB holds a ZipReader open; Zotero's own indexer closes it too.
       try {
@@ -152,7 +157,62 @@ async function readEpubText(attachmentItemID: number): Promise<string | null> {
       }
     }
   } catch (e) {
-    warn("failed to extract EPUB text", attachmentItemID, e);
+    warn("failed to extract EPUB sections", attachmentItemID, e);
+    return null;
+  }
+}
+
+/** Per-section text of an EPUB, cached like the full text. */
+export function getEpubSections(
+  attachmentItemID: number | undefined,
+): Promise<EpubSectionText[] | null> {
+  if (!attachmentItemID || !Number.isFinite(attachmentItemID)) {
+    return Promise.resolve(null);
+  }
+  const cached = epubSectionCache.get(attachmentItemID);
+  if (cached) {
+    return cached;
+  }
+  const pending = readEpubSections(attachmentItemID);
+  epubSectionCache.set(attachmentItemID, pending);
+  if (epubSectionCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = epubSectionCache.keys().next();
+    if (!oldest.done) {
+      epubSectionCache.delete(oldest.value);
+    }
+  }
+  return pending;
+}
+
+/**
+ * Last-resort text source for EPUB.
+ *
+ * Zotero's `Item.attachmentText` has no on-demand extraction for EPUB (only PDF
+ * does), so an unindexed book returns an empty string. We then reuse the very
+ * module Zotero uses for indexing (`chrome://zotero/content/EPUB.mjs`).
+ *
+ * Everything is guarded: this touches internal Zotero APIs, so any failure must
+ * degrade to "no context" instead of breaking the translation.
+ */
+async function readEpubText(attachmentItemID: number): Promise<string | null> {
+  const sections = await getEpubSections(attachmentItemID);
+  if (!sections) {
+    return null;
+  }
+  try {
+    let text = "";
+    for (const section of sections) {
+      text += `${section.text}\n`;
+      if (text.length >= MAX_EPUB_CHARS) {
+        log("EPUB text truncated at", MAX_EPUB_CHARS, "chars");
+        break;
+      }
+    }
+    const trimmed = text.trim();
+    log("extracted EPUB text", trimmed.length, "chars");
+    return trimmed || null;
+  } catch (e) {
+    warn("failed to join EPUB text", attachmentItemID, e);
     return null;
   }
 }

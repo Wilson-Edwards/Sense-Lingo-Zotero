@@ -231,6 +231,48 @@ Content-Type: application/json
 | EPUB 全文 | 每个附件       | 同上；单本上限 200 万字符         |
 | 弹窗译文  | 每个阅读器文档 | 同一文本 60 秒内复用；失败不缓存  |
 | 选区记录  | 每个阅读器文档 | 只保留最近一次，供快捷键使用      |
+| 翻译条目  | 插件 SQLite    | 见下一节                          |
+
+## 翻译缓存与整本预翻译
+
+译文除了内存里的 60 秒弹窗缓存，还会落到插件自带的
+`<数据目录>/sense-lingo-cache.sqlite`（`new Zotero.DBConnection("sense-lingo-cache")`）。
+它和 `zotero.sqlite` 完全隔离：删掉这个文件即清空缓存，Zotero 升级/迁移不会碰到它。
+
+**命中键是「词 + 句」，不是「词」。** 同一个 `bank` 在「河岸」和「银行」两个句子里意思不同，
+只按词缓存必然给出错误义项：
+
+```text
+wordKey     = NFC + 小写 + 去首尾标点
+sentenceKey = sha1(normalizeText(sentence))
+唯一键      = (attachmentID, wordKey, sentenceKey, promptHash, targetLang)
+```
+
+- `promptHash` 由当前划词模板的 `system` / `user` 模板 + 目标语言算出。改模板或换目标语言会让旧行
+  自然不再命中（不删除，方便切回旧模板）；**换模型不作废缓存**，模型只作为元信息记录。
+- 点击时只有 `word` 类型查缓存；划句本身没有更外层上下文，v1 不缓存。
+- 命中直接返回并标记「缓存」；未命中仍走原链路，成功后异步写回（`source = 'click'`）。
+- 句子比对从严格到宽松打分：`sentenceKey` 相等 1.00 → 归一化相等 0.99 → 去空白相等 0.95 →
+  包含关系 0.90 → 长公共前后缀 0.85。默认阈值 0.90，宁可多打一次 API 也不给错义项。
+- 数据库打不开、条目格式不对、EPUB 解析失败都只会让「这次没命中」，整条链路静默回落到 AI。
+
+**整本预翻译**（条目右键菜单或设置页按钮）把频次 ≥ 2 的单词按
+`preprocess/extract.ts` 切句抽词，再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词
+一次翻多条，逐块写入同一个库：
+
+```text
+EPUB 分节 → splitSentences（与点击同源）→ 抽词/频次过滤/每词采样 ≤3 句
+          → chunkItems（条数 + 字符预算）
+          → chatCompletion（非流式，max_tokens ≥ 120 × 条数）
+          → parseBatchOutput 严格校验（索引 1..n、每块行数、音标行）
+          → 每块一个事务写入 → 进度 / 续跑 / 取消
+```
+
+- 批量解析失败先对半重试一次，仍失败则逐条单发；模板里出现 `{text}` / `{sentence}` 时直接退化为逐条。
+- 每套模板第一次跑批前会单发一条，探测「一次回答有几行」，所以「只给中文、不要音标」的自定义模板也能批量。
+- 预翻译默认手动触发；`prefetchOnOpen` 默认关闭，避免打开书时意外扣费。开跑前会提示预计条目数与请求数。
+- 续跑按 `(wordKey, sentenceKey, promptHash, targetLang)` 跳过已存在条目；任务中断后 `slAttachment.state`
+  从 `running` 变回 `paused`，下次继续。
 
 ## 代码导览
 
@@ -245,6 +287,8 @@ Content-Type: application/json
 | `src/modules/llm/render.ts` | 变量替换                                             |
 | `src/modules/llm/client.ts` | OpenAI 兼容客户端：地址归一、超时、错误归一          |
 | `src/modules/llm/format.ts` | 划词三行格式归一                                     |
+| `src/modules/cache/*`       | 插件 SQLite：连接/迁移、键计算、点击时命中打分       |
+| `src/modules/preprocess/*`  | 整本预翻译：抽词、批量提示词与解析、任务队列、菜单   |
 | `src/modules/ui/*`          | 结果面板与设置页                                     |
 | `addon/prefs.js`            | 全部默认配置                                         |
 

@@ -408,6 +408,42 @@ function truncateAtWord(text: string, maxChars: number): string {
 }
 
 /**
+ * Split normalized text into sentences.
+ *
+ * Shares `isSentenceBoundary` and `truncateAtWord` with `resolveSentence`, so
+ * for any text the containing entry of the result is byte-for-byte the same
+ * string `resolveSentence` would return. The preprocessing pipeline relies on
+ * that: a cached entry is looked up by the live sentence, so both paths must
+ * cut the book identically.
+ */
+export function splitSentences(text: string, maxChars = 400): string[] {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return [];
+  }
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    if (!isSentenceBoundary(normalized, i)) {
+      continue;
+    }
+    const sentence = truncateAtWord(
+      normalized.slice(start, i + 1).trim(),
+      maxChars,
+    );
+    if (sentence) {
+      sentences.push(sentence);
+    }
+    start = i + 1;
+  }
+  const tail = truncateAtWord(normalized.slice(start).trim(), maxChars);
+  if (tail) {
+    sentences.push(tail);
+  }
+  return sentences;
+}
+
+/**
  * Locate the sentence (and its neighbours) that contains `needle`.
  *
  * Returns `null` when the needle cannot be found in the text at all, which is

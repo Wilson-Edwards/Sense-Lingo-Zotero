@@ -9,6 +9,7 @@
 
 import { getString } from "../../utils/locale";
 import { getNumberPref, getPref, setPref, setPrefRaw } from "../../utils/prefs";
+import { clearCache, getCacheStats } from "../cache/db";
 import { fetchModelIds } from "../llm/client";
 import {
   PROVIDER_FIELD_KEYS,
@@ -45,6 +46,12 @@ import {
 } from "../llm/prompt";
 import type { SelectionKind } from "../reader/selectionKind";
 import { normalizePopupFontSize } from "../reader/popupFontSize";
+import {
+  cancelActiveJob,
+  isJobRunning,
+  startPreprocess,
+} from "../preprocess/job";
+import { isEpubAttachment } from "../preprocess/menu";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -63,6 +70,12 @@ const NUMBER_KEYS = [
   "wordMaxChars",
   "maxSentenceChars",
   "requestTimeoutMs",
+  "prefetchConcurrency",
+  "prefetchBatchSize",
+  "prefetchMinOccurrences",
+  "prefetchMaxWords",
+  "prefetchMaxSentencesPerWord",
+  "prefetchDelayMs",
 ] as const satisfies readonly PrefKey[];
 
 const BOOL_KEYS = [
@@ -74,6 +87,11 @@ const BOOL_KEYS = [
   "stream",
   "disableThinking",
   "debug",
+  "cacheEnabled",
+  "cacheStrictSentence",
+  "cacheSingleCandidateFallback",
+  "autoCacheOnMiss",
+  "prefetchOnOpen",
 ] as const satisfies readonly PrefKey[];
 
 function byId<T extends HTMLElement>(win: Window, name: string): T | null {
@@ -614,6 +632,40 @@ function resetPromptProfiles(win: Window): void {
   setPromptStatus(win, "");
 }
 
+/** Write a one-line status under the cache buttons. */
+function setCacheStatus(win: Window, message: string): void {
+  const status = byId<HTMLElement>(win, "cacheStatus");
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+/** The EPUB attachment selected in the library, when exactly one is selected. */
+function selectedEpubAttachment(): Zotero.Item | null {
+  try {
+    const items = Zotero.getActiveZoteroPane()?.getSelectedItems?.() ?? [];
+    if (items.length !== 1) {
+      return null;
+    }
+    return isEpubAttachment(items[0]) ? items[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Cache size, reported as counts and an estimated size (never as money). */
+async function refreshCacheStats(win: Window): Promise<void> {
+  const stats = await getCacheStats();
+  setCacheStatus(
+    win,
+    getString("pref-cache-stats", {
+      entries: String(stats.entries),
+      attachments: String(stats.attachments),
+      kb: String(Math.max(0, Math.round(stats.bytes / 1024))),
+    }),
+  );
+}
+
 const bound = new WeakSet<Window>();
 
 function bindEvents(win: Window): void {
@@ -714,6 +766,46 @@ function bindEvents(win: Window): void {
   resetBtn?.addEventListener("click", () => {
     resetPromptProfiles(win);
   });
+
+  byId<HTMLButtonElement>(win, "cachePretranslate")?.addEventListener(
+    "click",
+    () => {
+      if (isJobRunning()) {
+        setCacheStatus(win, getString("pref-cache-busy"));
+        return;
+      }
+      const item = selectedEpubAttachment();
+      if (!item) {
+        setCacheStatus(win, getString("pref-cache-select-epub"));
+        return;
+      }
+      setCacheStatus(win, getString("pref-cache-running"));
+      void startPreprocess(item.id).then(() => refreshCacheStats(win));
+    },
+  );
+
+  byId<HTMLButtonElement>(win, "cacheStop")?.addEventListener("click", () => {
+    if (!isJobRunning()) {
+      setCacheStatus(win, getString("pref-cache-idle"));
+      return;
+    }
+    cancelActiveJob();
+    setCacheStatus(win, getString("pref-cache-stopping"));
+  });
+
+  byId<HTMLButtonElement>(win, "cacheRefresh")?.addEventListener(
+    "click",
+    () => {
+      void refreshCacheStats(win);
+    },
+  );
+
+  byId<HTMLButtonElement>(win, "cacheClear")?.addEventListener("click", () => {
+    if (!win.confirm(getString("pref-cache-clear-confirm"))) {
+      return;
+    }
+    void clearCache().then(() => refreshCacheStats(win));
+  });
 }
 
 /** Entry point, called from `preferences.xhtml` via `onPrefsEvent("load")`. */
@@ -722,6 +814,7 @@ export function registerPrefsScripts(win: Window): void {
   syncFromPrefs(win);
   seedModelOptions(win);
   maybeAutoFetchModelOptions(win);
+  void refreshCacheStats(win);
   if (!bound.has(win)) {
     bound.add(win);
     bindEvents(win);

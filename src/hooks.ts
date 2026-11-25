@@ -1,4 +1,9 @@
 import { config } from "../package.json";
+import { closeCacheDb, pauseInterruptedJobs } from "./modules/cache/db";
+import {
+  attachPreprocessMenuToWindow,
+  registerPreprocessMenu,
+} from "./modules/preprocess/menu";
 import { registerSelectionPopup } from "./modules/reader/selectionPopup";
 import { attachShortcutToWindow } from "./modules/reader/shortcuts";
 import { registerPrefsScripts } from "./modules/ui/preferences";
@@ -29,6 +34,11 @@ async function onStartup(): Promise<void> {
   }
 
   addon.data.disposers.push(registerSelectionPopup());
+  addon.data.disposers.push(registerPreprocessMenu());
+
+  // A job cannot outlive the process; anything still marked `running` belongs
+  // to a previous session and becomes resumable (`paused`).
+  void pauseInterruptedJobs().catch((e) => warn("cache init failed", e));
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -40,6 +50,8 @@ async function onStartup(): Promise<void> {
 
 async function onMainWindowLoad(win: Window): Promise<void> {
   attachShortcutToWindow(win);
+  // A main window opened after startup still needs its context-menu item.
+  addon.data.disposers.push(attachPreprocessMenuToWindow(win));
 }
 
 async function onMainWindowUnload(_win: Window): Promise<void> {
@@ -56,6 +68,11 @@ async function onShutdown(): Promise<void> {
   }
   addon.data.disposers = [];
   addon.data.alive = false;
+  try {
+    await closeCacheDb();
+  } catch (e) {
+    warn("failed to close cache db", e);
+  }
   delete (Zotero as unknown as Record<string, unknown>)[config.addonInstance];
 }
 

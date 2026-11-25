@@ -1,6 +1,7 @@
 # Reader popup
 popup-translate = Translate
 popup-translate-title = Translate the selection with AI, using its sentence as context
+popup-cache-hint = Served from the local cache
 
 # Result panel
 panel-kind-word = WORD
@@ -16,6 +17,24 @@ panel-btn-switch-word = Retry as word
 panel-btn-switch-sentence = Retry as sentence
 panel-btn-edit-prompt = Edit prompt
 panel-btn-retry = Retry
+panel-cache-meta = Cache · { $age }
+cache-age-minutes = { $count } min ago
+cache-age-hours = { $count } h ago
+cache-age-days = { $count } d ago
+
+# Preprocessing
+menu-preprocess = Pre-translate this book (Sense Lingo)
+menu-stop = Stop pre-translation
+prefetch-headline = Sense Lingo pre-translation
+prefetch-progress = Written { $done } / { $total }
+prefetch-confirm = About { $entries } entries, roughly { $requests } requests. Continue?
+prefetch-summary = Done: { $done } / { $total } written, { $failed } failed
+prefetch-paused-error = Paused: { $reason }
+prefetch-need-context = Enable "include the containing sentence" first; otherwise the cache can never match.
+prefetch-not-epub = Select an EPUB attachment.
+prefetch-no-text = Could not read this EPUB's text.
+prefetch-no-entries = No word passed the frequency threshold; lower "minimum occurrences" and retry.
+prefetch-no-db = The local cache database is unavailable; pre-translation was skipped.
 
 # Errors
 error-generic = Translation failed. Please try again.

@@ -167,6 +167,139 @@
   </vbox>
 
   <vbox class="sl-section">
+    <label><html:h3 data-l10n-id="pref-head-cache"></html:h3></label>
+    <html:div class="sl-block-hint" data-l10n-id="pref-cache-hint"></html:div>
+
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-cacheEnabled" />
+      <html:label
+        for="sl-cacheEnabled"
+        data-l10n-id="pref-cache-enabled"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-autoCacheOnMiss" />
+      <html:label
+        for="sl-autoCacheOnMiss"
+        data-l10n-id="pref-cache-write-back"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-cacheStrictSentence" />
+      <html:label
+        for="sl-cacheStrictSentence"
+        data-l10n-id="pref-cache-strict"
+      ></html:label>
+    </html:div>
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-cacheSingleCandidateFallback" />
+      <html:label
+        for="sl-cacheSingleCandidateFallback"
+        data-l10n-id="pref-cache-single"
+      ></html:label>
+    </html:div>
+
+    <html:div class="sl-row">
+      <html:input type="checkbox" id="sl-prefetchOnOpen" />
+      <html:label
+        for="sl-prefetchOnOpen"
+        data-l10n-id="pref-prefetch-on-open"
+      ></html:label>
+    </html:div>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchBatchSize"
+        data-l10n-id="pref-prefetch-batch"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchBatchSize"
+        min="1"
+        step="1"
+        style="width: 80px"
+      />
+      <html:label
+        for="sl-prefetchConcurrency"
+        data-l10n-id="pref-prefetch-concurrency"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchConcurrency"
+        min="1"
+        step="1"
+        style="width: 80px"
+      />
+      <html:label
+        for="sl-prefetchDelayMs"
+        data-l10n-id="pref-prefetch-delay"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchDelayMs"
+        min="1"
+        step="50"
+        style="width: 90px"
+      />
+    </hbox>
+
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-prefetchMinOccurrences"
+        data-l10n-id="pref-prefetch-min-occ"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchMinOccurrences"
+        min="1"
+        step="1"
+        style="width: 80px"
+      />
+      <html:label
+        for="sl-prefetchMaxWords"
+        data-l10n-id="pref-prefetch-max-words"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchMaxWords"
+        min="1"
+        step="100"
+        style="width: 90px"
+      />
+      <html:label
+        for="sl-prefetchMaxSentencesPerWord"
+        data-l10n-id="pref-prefetch-sentences"
+        style="margin-left: 16px; min-width: 90px"
+      ></html:label>
+      <html:input
+        type="number"
+        id="sl-prefetchMaxSentencesPerWord"
+        min="1"
+        step="1"
+        style="width: 80px"
+      />
+    </hbox>
+
+    <hbox style="margin-top: 6px; gap: 6px">
+      <html:button
+        id="sl-cachePretranslate"
+        data-l10n-id="pref-cache-pretranslate"
+      />
+      <html:button id="sl-cacheStop" data-l10n-id="pref-cache-stop" />
+      <html:button id="sl-cacheRefresh" data-l10n-id="pref-cache-refresh" />
+      <html:button id="sl-cacheClear" data-l10n-id="pref-cache-clear" />
+    </hbox>
+    <html:div
+      id="sl-cacheStatus"
+      class="sl-hint"
+      style="margin-left: 0"
+    ></html:div>
+  </vbox>
+
+  <vbox class="sl-section">
     <label><html:h3 data-l10n-id="pref-head-prompts"></html:h3></label>
     <html:div class="sl-block-hint" data-l10n-id="pref-prompt-hint"></html:div>
     <html:div

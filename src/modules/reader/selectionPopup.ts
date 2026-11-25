@@ -229,13 +229,42 @@ function createResultSlot(doc: Document, fontSize: number): HTMLDivElement {
   }
   // Widen with the font so the characters per line stay roughly stable.
   slot.style.maxWidth = `${popupMaxWidth(fontSize)}px`;
+
+  // Two lines: a hint ("served from cache") above the translation. Keeping the
+  // hint inside the slot means every re-rendered slot carries it too.
+  const hint = doc.createElement("div");
+  hint.className = "sl-cache-hint";
+  hint.style.cssText =
+    "display:none;color:#8a8a8a;font-size:11px;line-height:1.4;margin-bottom:2px;";
+  const body = doc.createElement("div");
+  body.className = "sl-body";
+  body.style.cssText = "white-space:pre-wrap;";
+  slot.append(hint, body);
   return slot;
+}
+
+function slotBody(slot: HTMLElement): HTMLElement {
+  return (slot.querySelector(".sl-body") as HTMLElement | null) ?? slot;
+}
+
+function slotHint(slot: HTMLElement): HTMLElement | null {
+  return slot.querySelector(".sl-cache-hint") as HTMLElement | null;
+}
+
+function hideCacheHint(slot: HTMLElement): void {
+  const hint = slotHint(slot);
+  if (hint) {
+    hint.style.display = "none";
+    hint.textContent = "";
+  }
 }
 
 function showLoading(slot: HTMLDivElement): void {
   slot.style.display = "block";
-  slot.style.color = "#666";
-  slot.textContent = getString("panel-loading");
+  hideCacheHint(slot);
+  const body = slotBody(slot);
+  body.style.color = "#666";
+  body.textContent = getString("panel-loading");
 }
 
 function showInlineResult(
@@ -243,8 +272,17 @@ function showInlineResult(
   result: InlineTranslation,
 ): void {
   slot.style.display = "block";
-  slot.style.color = result.ok ? "#1a1a1a" : "#b42318";
-  slot.textContent = result.ok ? result.translation : result.message;
+  hideCacheHint(slot);
+  if (result.ok && result.fromCache) {
+    const hint = slotHint(slot);
+    if (hint) {
+      hint.textContent = getString("popup-cache-hint");
+      hint.style.display = "block";
+    }
+  }
+  const body = slotBody(slot);
+  body.style.color = result.ok ? "#1a1a1a" : "#b42318";
+  body.textContent = result.ok ? result.translation : result.message;
 }
 
 /** Render a streamed chunk; the popup may close while the request is open. */
@@ -253,8 +291,10 @@ function showInlinePartial(slot: HTMLDivElement, translation: string): void {
     return;
   }
   slot.style.display = "block";
-  slot.style.color = "#1a1a1a";
-  slot.textContent = translation;
+  hideCacheHint(slot);
+  const body = slotBody(slot);
+  body.style.color = "#1a1a1a";
+  body.textContent = translation;
 }
 
 function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
@@ -321,7 +361,7 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
     running = true;
     // A re-rendered popup may already show text replayed from the running
     // request; never replace it with the placeholder.
-    if (!slot.textContent) {
+    if (!slotBody(slot).textContent) {
       showLoading(slot);
     }
     void promise

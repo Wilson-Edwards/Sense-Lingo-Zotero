@@ -1,6 +1,7 @@
 # Reader popup
 popup-translate = 翻译
 popup-translate-title = 结合所在句子，用 AI 翻译选中的词或句子
+popup-cache-hint = 来自本地缓存
 
 # Result panel
 panel-kind-word = 词
@@ -16,6 +17,24 @@ panel-btn-switch-word = 按"词"重译
 panel-btn-switch-sentence = 按"句"重译
 panel-btn-edit-prompt = 改提示词
 panel-btn-retry = 重译
+panel-cache-meta = 缓存 · { $age }
+cache-age-minutes = { $count } 分钟前
+cache-age-hours = { $count } 小时前
+cache-age-days = { $count } 天前
+
+# Preprocessing
+menu-preprocess = 预翻译本书（Sense Lingo）
+menu-stop = 停止预翻译
+prefetch-headline = Sense Lingo 预翻译
+prefetch-progress = 已写入 { $done } / { $total }
+prefetch-confirm = 本书预计 { $entries } 条，约 { $requests } 次请求。继续？
+prefetch-summary = 完成：已写入 { $done } / { $total }，失败 { $failed }
+prefetch-paused-error = 已暂停：{ $reason }
+prefetch-need-context = 请先在设置中开启「划词时带出所在句子」，否则缓存无法命中。
+prefetch-not-epub = 请选择一个 EPUB 附件。
+prefetch-no-text = 无法读取该 EPUB 的正文。
+prefetch-no-entries = 没有达到频次阈值的候选词，可调低「最低出现次数」后重试。
+prefetch-no-db = 本地缓存数据库不可用，已跳过预翻译。
 
 # Errors
 error-generic = 翻译失败，请稍后重试。

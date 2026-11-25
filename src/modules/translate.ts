@@ -31,8 +31,11 @@ import {
   resolveProviderConfig,
   type EffectiveProviderConfig,
 } from "./llm/providers";
+import { putEntries } from "./cache/db";
+import { promptHash } from "./cache/keys";
+import { entryFromTranslation, lookupWord } from "./cache/lookup";
 import { getBooleanPref, getNumberPref, getStringPref } from "../utils/prefs";
-import { log } from "../utils/logger";
+import { log, warn } from "../utils/logger";
 
 export interface PluginSettings {
   provider: EffectiveProviderConfig;
@@ -47,6 +50,10 @@ export interface PluginSettings {
   profiles: PromptProfiles;
   wordProfileId: string;
   sentenceProfileId: string;
+  cacheEnabled: boolean;
+  cacheStrictSentence: boolean;
+  cacheSingleCandidateFallback: boolean;
+  autoCacheOnMiss: boolean;
 }
 
 /**
@@ -86,6 +93,13 @@ export function readSettings(): PluginSettings {
     profiles: parseProfiles(getStringPref("promptProfiles", "")),
     wordProfileId: getStringPref("promptProfileWord", "word"),
     sentenceProfileId: getStringPref("promptProfileSentence", "sentence"),
+    cacheEnabled: getBooleanPref("cacheEnabled", true),
+    cacheStrictSentence: getBooleanPref("cacheStrictSentence", true),
+    cacheSingleCandidateFallback: getBooleanPref(
+      "cacheSingleCandidateFallback",
+      false,
+    ),
+    autoCacheOnMiss: getBooleanPref("autoCacheOnMiss", true),
   };
 }
 
@@ -132,6 +146,8 @@ export interface TranslateInput {
   profileIdOverride?: string;
   /** Replace the rendered user prompt, for the panel's "edit prompt" flow. */
   userPromptOverride?: string;
+  /** Bypass the cache read, so "retranslate" always hits the provider. */
+  skipCache?: boolean;
   /**
    * Progressive output. Called with the translation assembled so far every time
    * the model streams a chunk; not called when `stream` is off. The text is
@@ -155,6 +171,10 @@ export interface TranslateResult {
   elapsedMs: number;
   /** Rendered user prompt, shown in the panel for editing. */
   userPrompt: string;
+  /** True when the answer came from the local cache instead of the provider. */
+  fromCache: boolean;
+  /** Epoch milliseconds of the cached entry, when `fromCache` is true. */
+  cachedAt?: number;
 }
 
 /**
@@ -274,6 +294,64 @@ export async function translate(
   const formatTranslation = (raw: string): string =>
     kind === "word" ? normalizeWordTranslation(raw) : raw;
 
+  /**
+   * The cache only knows single words: a word's sense is fixed by its sentence,
+   * while a selection that is already a sentence has no wider context and no
+   * sentence key of its own. An edited prompt or a manually forced retranslate
+   * also bypasses it, so the user always gets what they asked for.
+   */
+  const profileForCache = settings.profiles[rendered.profileId];
+  const cacheSentence = context?.sentence ?? "";
+  const cacheSignature =
+    kind === "word" && profileForCache
+      ? promptHash(
+          profileForCache.system,
+          profileForCache.user,
+          settings.targetLang,
+        )
+      : "";
+  const cacheEligible =
+    kind === "word" &&
+    settings.cacheEnabled &&
+    !input.userPromptOverride &&
+    !!input.attachmentItemID &&
+    !/\s/.test(text) &&
+    !!cacheSentence &&
+    !!cacheSignature;
+  const cacheReadAllowed = cacheEligible && !input.skipCache;
+
+  if (cacheReadAllowed && input.attachmentItemID) {
+    const hit = await lookupWord({
+      attachmentID: input.attachmentItemID,
+      word: text,
+      sentence: cacheSentence,
+      promptHash: cacheSignature,
+      targetLang: settings.targetLang,
+      strict: settings.cacheStrictSentence,
+      singleCandidateFallback: settings.cacheSingleCandidateFallback,
+    });
+    if (hit) {
+      log("cache hit", text, hit.score.toFixed(2), hit.source);
+      return {
+        translation: hit.translation,
+        kind,
+        profileId: rendered.profileId,
+        profileName: rendered.profileName,
+        usedFallback: rendered.usedFallback,
+        sentence: cacheSentence,
+        prevSentence: context?.prevSentence ?? "",
+        nextSentence: context?.nextSentence ?? "",
+        hasContext: true,
+        truncated: context?.truncated ?? false,
+        model: hit.model || "cache",
+        elapsedMs: 0,
+        userPrompt,
+        fromCache: true,
+        cachedAt: hit.updatedAt,
+      };
+    }
+  }
+
   // Streaming reuses the same formatting so the partial text shown in the UI
   // does not jump when the final, normalized result arrives.
   let streamedRaw = "";
@@ -291,8 +369,27 @@ export async function translate(
       : undefined,
   });
 
+  const translation = formatTranslation(response.content);
+
+  // Store what this click just paid for, so the next click on the same word in
+  // the same sentence is instant. Fire-and-forget: a failed write must never
+  // affect the answer already on screen.
+  if (cacheEligible && settings.autoCacheOnMiss && input.attachmentItemID) {
+    const row = entryFromTranslation({
+      attachmentID: input.attachmentItemID,
+      word: text,
+      sentence: cacheSentence,
+      translation,
+      promptHash: cacheSignature,
+      targetLang: settings.targetLang,
+      profileId: rendered.profileId,
+      model: response.model,
+    });
+    void putEntries([row]).catch((e) => warn("cache write-back failed", e));
+  }
+
   return {
-    translation: formatTranslation(response.content),
+    translation,
     kind,
     profileId: rendered.profileId,
     profileName: rendered.profileName,
@@ -305,5 +402,6 @@ export async function translate(
     model: response.model,
     elapsedMs: response.elapsedMs,
     userPrompt,
+    fromCache: false,
   };
 }
