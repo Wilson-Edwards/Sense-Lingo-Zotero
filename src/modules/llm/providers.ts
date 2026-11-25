@@ -6,7 +6,8 @@
  * default model and — for gateways that need it — extra request headers.
  */
 
-export type ProviderId = "openai" | "deepseek" | "clinepass" | "custom";
+export type ProviderId =
+  "openai" | "deepseek" | "clinepass" | "commandcode" | "custom";
 
 export interface ProviderPreset {
   id: ProviderId;
@@ -24,6 +25,15 @@ export interface ProviderPreset {
    * expose it at the usual `/models`.
    */
   modelsPath?: string;
+  /**
+   * Endpoint a listed model must serve to be usable here.
+   *
+   * Command Code's catalogue declares `supported_endpoints` per model, and its
+   * Claude ids are `/messages`-only — calling them on `/chat/completions`
+   * answers `unsupported_model` — so the list is narrowed to
+   * `/chat/completions`.
+   */
+  requiredEndpoint?: string;
   /**
    * Namespace the `model` field accepts. A catalogue can list ids outside it
    * (ClinePass' `/models` answers with the plain `provider/model` catalogue),
@@ -104,6 +114,20 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     // reasoning-mandatory model is retried without the hint (see client.ts).
     supportsDisableThinking: true,
   },
+  commandcode: {
+    id: "commandcode",
+    label: "Command Code",
+    baseURL: "https://api.commandcode.ai/provider/v1",
+    // A fast multilingual model keeps translation latency low; the full
+    // `provider/model` catalogue is fetched from `GET /models`.
+    model: "deepseek/deepseek-v4-flash",
+    // The shared catalogue also lists Claude ids that only answer on
+    // `/messages`; keep the dropdown to what this client can call.
+    requiredEndpoint: "/chat/completions",
+    // The endpoint answers in OpenAI's chat-completions shape, but
+    // `reasoning: { enabled: false }` is accepted and then ignored, so the
+    // "disable thinking" switch is left unsupported here.
+  },
   custom: {
     id: "custom",
     label: "Custom (OpenAI compatible)",
@@ -116,11 +140,15 @@ export const PROVIDER_IDS: ProviderId[] = [
   "openai",
   "deepseek",
   "clinepass",
+  "commandcode",
   "custom",
 ];
 
 export function normalizeProviderId(raw: unknown): ProviderId {
-  return raw === "deepseek" || raw === "clinepass" || raw === "custom"
+  return raw === "deepseek" ||
+    raw === "clinepass" ||
+    raw === "commandcode" ||
+    raw === "custom"
     ? raw
     : "openai";
 }
@@ -192,6 +220,8 @@ export interface EffectiveProviderConfig {
   headers: Record<string, string>;
   /** Path of the model list relative to `baseURL`, e.g. `/models`. */
   modelsPath: string;
+  /** Endpoint a listed model must serve, or `""` to keep the whole list. */
+  requiredEndpoint: string;
   /** Only ids with this prefix are usable, e.g. `cline-pass/`. */
   modelPrefix: string;
   /** Ids to offer when the catalogue has nothing inside `modelPrefix`. */
@@ -228,6 +258,7 @@ export function resolveProviderConfig(
     model,
     headers: { ...(preset.headers ?? {}) },
     modelsPath: preset.modelsPath ?? "/models",
+    requiredEndpoint: preset.requiredEndpoint ?? "",
     modelPrefix: preset.modelPrefix ?? "",
     fallbackModels: preset.fallbackModels ?? [],
     temperature:

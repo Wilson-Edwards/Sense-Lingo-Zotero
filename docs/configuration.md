@@ -26,7 +26,7 @@
 
 | 键                         | 类型         | 默认值     | 设置页 | 说明                                                                                                    |
 | -------------------------- | ------------ | ---------- | ------ | ------------------------------------------------------------------------------------------------------- |
-| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `clinepass` / `custom`                                              |
+| `provider`                 | string       | `openai`   | ✅     | 服务商预设：`openai` / `deepseek` / `clinepass` / `commandcode` / `custom`                              |
 | `apiKey`                   | string       | `""`       | ✅     | API Key。以**明文**保存在 prefs 中，见 [隐私与安全](../README.zh-CN.md#隐私与安全)                      |
 | `baseURL`                  | string       | `""`       | ✅     | 接口地址；留空使用预设。只写主机名时自动补 `/v1`，末尾斜杠会被去掉                                      |
 | `model`                    | string       | `""`       | ✅     | 模型名，如 `gpt-4o-mini` / `deepseek-chat` / `cline-pass/glm-5.3`；留空使用预设，可点「获取模型」拉取   |
@@ -58,12 +58,13 @@
 
 ## 服务商预设
 
-| provider    | baseURL                        | 默认 model                       |
-| ----------- | ------------------------------ | -------------------------------- |
-| `openai`    | `https://api.openai.com/v1`    | `gpt-4o-mini`                    |
-| `deepseek`  | `https://api.deepseek.com/v1`  | `deepseek-chat`                  |
-| `clinepass` | `https://api.cline.bot/api/v1` | `cline-pass/deepseek-v4.1-flash` |
-| `custom`    | 用户填写                       | 用户填写                         |
+| provider      | baseURL                                  | 默认 model                       |
+| ------------- | ---------------------------------------- | -------------------------------- |
+| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
+| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
+| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash`     |
+| `custom`      | 用户填写                                 | 用户填写                         |
 
 - `apiKey` 是必填项，`custom` 也不例外。
 - `custom` 只要兼容 OpenAI 的 `POST {baseURL}/chat/completions` 即可（自建网关、Ollama、LM Studio 等）。
@@ -72,6 +73,16 @@
 - `clinepass` 使用 Cline 的 API（Key 在 `app.cline.bot` 的 **Settings → API Keys** 创建），
   请求会自动带上 `X-Response-Format: openai`，让非流式响应保持标准的
   `choices[0].message.content` 结构；模型名为 `cline-pass/...` 形式。
+- `commandcode` 使用 Command Code 的 Provider 接口
+  （`POST https://api.commandcode.ai/provider/v1/chat/completions`，`Authorization: Bearer <key>`），
+  模型名为 `provider/model` 形式，默认 `deepseek/deepseek-v4-flash`。
+  `GET /provider/v1/models` 返回该 Key 可用的模型目录（含 `supported_endpoints`），
+  不需要内置清单；插件会按目录声明的端点筛掉只能走 `/provider/v1/messages` 的
+  `claude-*` 模型（实测在 chat 接口上回 `unsupported_model`），其余 id 原样填入下拉。
+  套餐不包含的模型（例如 `gpt-6.2-astra`）会在请求时回 `MODEL_NOT_IN_PLAN`，
+  这是 Key 的权限问题，插件不做预判。
+  该接口会返回 `reasoning_content`（含流式 delta），插件只取 `content`，所以思维链
+  不会混进译文。
 - 设置页的 **模型** 是一个下拉框，打开设置页或切换服务商时就会填好：
   普通预设先用该服务商 `/models` 的清单，ClinePass 则直接列出预设里那 10 个实测可跑的
   slug（接口没有 ClinePass 专用列表，详见下一节）。下拉第一项是「使用预设
@@ -111,6 +122,8 @@ ClinePass 预设内置的 10 个模型（均为真实 Key 实测跑通，剩下�
 
 - **只有 ClinePass 预设会发送该字段**。openai.com 会拒绝未知的顶层参数，OpenAI 兼容网关
   也无法预判，所以其他预设即便勾着也不会带；切到它们时设置页的复选框会置灰并给出提示。
+- Command Code 实测**接受但忽略**该字段（DeepSeek / GLM / Qwen / Kimi 的 reasoning token
+  数量不变），所以它同样不发送，复选框置灰。
 - 用同一个 “Reply with exactly: ok” 请求实测（ClinePass，思考 token 数）：
 
   | 模型                                    | 关思考 | 开思考   | 结果                                                                              |

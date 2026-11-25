@@ -54,7 +54,7 @@
 | 🧩 语境消歧        | 划词时自动带出所在句；划句时可选带出前后各一句，避免重复与复读                                                                                             |
 | 🗣 美 / 英音标      | 划词固定三行：**释义** / **美式音标** / **英式音标**，人名、地名、品牌 / 产品名等专有名词同样适用                                                          |
 | 🎯 双提示词路由    | 「划词」与「划句」两套独立模板：前者给语境词义 + 词性，后者给通顺译文，互不干扰                                                                            |
-| 🤖 多服务商        | 内置 **OpenAI** / **DeepSeek** / **ClinePass**，并提供「OpenAI 兼容」模式覆盖任意自建 / 第三方网关（含 Ollama）                                            |
+| 🤖 多服务商        | 内置 **OpenAI** / **DeepSeek** / **ClinePass** / **Command Code**，并提供「OpenAI 兼容」模式覆盖任意自建 / 第三方网关（含 Ollama）                         |
 | ✍️ 提示词完全可改  | 每种选区类型可保存多套模板，设置页增删改、下拉切换当前使用；结果面板还能临时换一套重译。换行原样保留，支持 `{text}` / `{sentence}` / `{targetLang}` 等变量 |
 | 🎛️ 模型参数可配    | 模型下拉选择 + 自定义输入、`baseURL`、`temperature`、`max_tokens`、超时全部可调，切换服务商互不覆盖                                                        |
 | 🚫 禁止思考        | 默认开启：请求带 `reasoning: { enabled: false }`，跳过推理阶段（Qwen / Kimi 实测思考 token 归零，显著更快更省）；服务商强制推理时自动重试                  |
@@ -91,17 +91,18 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 
 打开 `编辑 / Edit` → `设置 / Settings` → `Sense Lingo`：
 
-| 字段           | 填什么                                                             |
-| -------------- | ------------------------------------------------------------------ |
-| 服务商预设     | `OpenAI` / `DeepSeek` / `ClinePass` / `Custom (OpenAI compatible)` |
-| API Key        | 对应服务商的 Key（必填）                                           |
-| 接口地址、模型 | 留空即用预设，也可自行填写                                         |
+| 字段           | 填什么                                                                              |
+| -------------- | ----------------------------------------------------------------------------------- |
+| 服务商预设     | `OpenAI` / `DeepSeek` / `ClinePass` / `Command Code` / `Custom (OpenAI compatible)` |
+| API Key        | 对应服务商的 Key（必填）                                                            |
+| 接口地址、模型 | 留空即用预设，也可自行填写                                                          |
 
-| provider    | 默认接口地址                   | 默认模型                         |
-| ----------- | ------------------------------ | -------------------------------- |
-| `openai`    | `https://api.openai.com/v1`    | `gpt-4o-mini`                    |
-| `deepseek`  | `https://api.deepseek.com/v1`  | `deepseek-chat`                  |
-| `clinepass` | `https://api.cline.bot/api/v1` | `cline-pass/deepseek-v4.1-flash` |
+| provider      | 默认接口地址                             | 默认模型                         |
+| ------------- | ---------------------------------------- | -------------------------------- |
+| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
+| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
+| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash`     |
 
 每个服务商的 Key / 地址 / 模型会**分别保存**，来回切换不会互相覆盖。
 用本地模型请选 `Custom`，把接口地址指向本地 OpenAI 兼容端点。
@@ -112,7 +113,9 @@ ClinePass 直接列出预设里那 10 个实测可用的 slug（打开即可选�
 点 **获取模型** 只是刷新一次：ClinePass 没有自己的模型列表接口
 （`/api/v1/cline-pass/models` 为 404），共享的 `/api/v1/models` 里也不含
 `cline-pass/...` 别名，所以刷新后仍回落到预设清单。选中 ClinePass 后，请求会自动带上
-`X-Response-Format: openai` 响应头。
+`X-Response-Format: openai` 请求头。
+Command Code 的 `GET /models` 会返回 `provider/model` 目录，点 **获取模型** 即可把当前 Key
+走 chat 接口能用的模型填进下拉（只能走 `/messages` 的 `claude-*` 会被过滤掉）。
 
 ### 3. 开始使用
 
@@ -156,25 +159,25 @@ ClinePass 直接列出预设里那 10 个实测可用的 slug（打开即可选�
 设置入口：`编辑 / Edit` → `设置 / Settings` → `Sense Lingo`。
 完整 25 项、服务商隔离机制与 `about:config` 改法见 **[配置项参考](docs/configuration.md)**。
 
-| 设置              | 默认       | 作用                                           |
-| ----------------- | ---------- | ---------------------------------------------- |
-| 服务商预设        | `openai`   | `openai` / `deepseek` / `clinepass` / `custom` |
-| API Key           | 空         | 必填，以明文保存在 Zotero prefs                |
-| 接口地址 / 模型   | 空         | 留空即用预设；只写主机名会自动补 `/v1`         |
-| 温度              | `0.3`      | 越低越稳定，翻译建议 0～0.5                    |
-| 最大 tokens       | `1024`     | 单次回复上限                                   |
-| 判定方式          | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`       |
-| 最大词数 / 字符数 | `3` / `40` | 超过则按「句」处理                             |
-| 划词带出所在句    | 开         | 关闭后等同词典式直译                           |
-| 划句带出前后句    | 关         | 开启后会多带前后各一句，token 增加             |
-| 单句上下文上限    | `400`      | 超出截断并在面板提示                           |
-| 弹窗按钮          | 开         | 是否在划词弹窗注入「翻译」按钮                 |
-| 自动翻译          | 关         | 选中即翻译，按钮隐藏                           |
-| 快捷键            | 开         | `Ctrl/⌘ + Shift + T`                           |
-| 弹窗字号          | `12`       | 8–32 px                                        |
-| 请求超时          | `30000`    | 毫秒；超时提示重试                             |
-| 流式输出          | 开         | 默认开启；边生成边显示，超时按空闲时间计算     |
-| 调试日志          | 关         | 输出到 `帮助 → 调试输出`                       |
+| 设置              | 默认       | 作用                                                           |
+| ----------------- | ---------- | -------------------------------------------------------------- |
+| 服务商预设        | `openai`   | `openai` / `deepseek` / `clinepass` / `commandcode` / `custom` |
+| API Key           | 空         | 必填，以明文保存在 Zotero prefs                                |
+| 接口地址 / 模型   | 空         | 留空即用预设；只写主机名会自动补 `/v1`                         |
+| 温度              | `0.3`      | 越低越稳定，翻译建议 0～0.5                                    |
+| 最大 tokens       | `1024`     | 单次回复上限                                                   |
+| 判定方式          | `auto`     | `auto` / `alwaysWord` / `alwaysSentence`                       |
+| 最大词数 / 字符数 | `3` / `40` | 超过则按「句」处理                                             |
+| 划词带出所在句    | 开         | 关闭后等同词典式直译                                           |
+| 划句带出前后句    | 关         | 开启后会多带前后各一句，token 增加                             |
+| 单句上下文上限    | `400`      | 超出截断并在面板提示                                           |
+| 弹窗按钮          | 开         | 是否在划词弹窗注入「翻译」按钮                                 |
+| 自动翻译          | 关         | 选中即翻译，按钮隐藏                                           |
+| 快捷键            | 开         | `Ctrl/⌘ + Shift + T`                                           |
+| 弹窗字号          | `12`       | 8–32 px                                                        |
+| 请求超时          | `30000`    | 毫秒；超时提示重试                                             |
+| 流式输出          | 开         | 默认开启；边生成边显示，超时按空闲时间计算                     |
+| 调试日志          | 关         | 输出到 `帮助 → 调试输出`                                       |
 
 > 目标语言 `targetLang` 默认 `zh-CN`，目前未出现在设置页，可在 `about:config` 里修改
 > `extensions.zotero.sense-lingo.targetLang`。

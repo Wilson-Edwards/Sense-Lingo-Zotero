@@ -77,6 +77,64 @@ describe("clinepass preset", () => {
   });
 });
 
+describe("commandcode preset", () => {
+  it("uses the Command Code API base URL and a model from its catalogue", () => {
+    const resolved = resolveProviderConfig({ provider: "commandcode" });
+    expect(resolved.baseURL).toBe("https://api.commandcode.ai/provider/v1");
+    expect(resolved.model).toBe("deepseek/deepseek-v4-flash");
+    // The gateway lists its whole catalogue at `/models`; ids need no prefix
+    // and nothing is baked in.
+    expect(resolved.modelsPath).toBe("/models");
+    expect(resolved.requiredEndpoint).toBe("/chat/completions");
+    expect(resolved.modelPrefix).toBe("");
+    expect(resolved.fallbackModels).toEqual([]);
+  });
+
+  it("adds no extra headers and leaves the thinking switch inert", () => {
+    const resolved = resolveProviderConfig({
+      provider: "commandcode",
+      disableThinking: true,
+    });
+    expect(resolved.headers).toEqual({});
+    // The gateway accepts `reasoning: { enabled: false }` and ignores it, so
+    // the field must not be sent.
+    expect(resolved.disableThinking).toBe(false);
+    expect(canDisableThinking("commandcode")).toBe(false);
+  });
+
+  it("normalizes the provider id", () => {
+    expect(normalizeProviderId("commandcode")).toBe("commandcode");
+  });
+
+  it("fetches the catalogue and drops /messages-only models", async () => {
+    // What api.commandcode.ai actually answers: Claude ids are `/messages`-only
+    // and reject chat completions with `unsupported_model`.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        object: "list",
+        data: [
+          {
+            id: "claude-sonnet-5",
+            supported_endpoints: ["/messages"],
+          },
+          {
+            id: "deepseek/deepseek-v4-flash",
+            supported_endpoints: ["/chat/completions", "/responses"],
+          },
+          { id: "google/gemini-4-neon" },
+        ],
+      }),
+    );
+    const ids = await fetchModelIds({
+      config: resolveProviderConfig({ provider: "commandcode", apiKey: "k" }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(ids).toEqual(["deepseek/deepseek-v4-flash", "google/gemini-4-neon"]);
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.commandcode.ai/provider/v1/models");
+  });
+});
+
 describe("presetModelIds", () => {
   it("offers the verified ClinePass models in the settings pane", () => {
     const ids = presetModelIds("clinepass");
@@ -202,6 +260,29 @@ describe("parseModelIds", () => {
         ],
       }),
     ).toEqual(["cline-pass/glm-5.3", "cline-pass/kimi-k3"]);
+  });
+
+  it("filters by declared endpoint but keeps undeclared ids", () => {
+    const payload = {
+      data: [
+        { id: "messages-only", supported_endpoints: ["/messages"] },
+        {
+          id: "chat-model",
+          supported_endpoints: ["/chat/completions", "/responses"],
+        },
+        { id: "no-metadata" },
+      ],
+    };
+    expect(parseModelIds(payload, "/chat/completions")).toEqual([
+      "chat-model",
+      "no-metadata",
+    ]);
+    // Without a required endpoint the whole list is kept.
+    expect(parseModelIds(payload)).toEqual([
+      "messages-only",
+      "chat-model",
+      "no-metadata",
+    ]);
   });
 
   it("reads a bare array of ids", () => {

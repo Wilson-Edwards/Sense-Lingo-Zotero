@@ -74,28 +74,47 @@ export function buildModelsEndpoint(
 
 const MODEL_WRAPPER_KEYS = ["data", "models", "items", "results"] as const;
 
+interface ModelEntry {
+  id: string;
+  /**
+   * Endpoints the catalogue declares for this model, when it declares any.
+   * A gateway that serves everything usually omits the field entirely.
+   */
+  endpoints?: string[];
+}
+
+function endpointsOf(record: Record<string, unknown>): string[] | undefined {
+  const raw = record.supported_endpoints;
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  return raw.filter((path): path is string => typeof path === "string");
+}
+
 /**
- * Pull model ids out of whatever shape a catalogue endpoint answers with.
+ * Pull model entries out of whatever shape a catalogue endpoint answers with.
  *
  * The OpenAI list (`{ object: "list", data: [{ id }] }`) is the common case;
  * gateways also answer with a bare array, a `models` array, or a map keyed by
  * model id, and all of those are accepted so one parser works for every
  * preset.
  */
-function collectModelIds(value: unknown, depth: number): string[] {
+function collectModelEntries(value: unknown, depth: number): ModelEntry[] {
   if (depth > 3 || value == null) {
     return [];
   }
   if (Array.isArray(value)) {
-    return value.flatMap((entry): string[] => {
+    return value.flatMap((entry): ModelEntry[] => {
       if (typeof entry === "string") {
-        return [entry];
+        return [{ id: entry }];
       }
       if (entry && typeof entry === "object") {
         const record = entry as Record<string, unknown>;
         for (const key of ["id", "model", "slug", "name"] as const) {
           if (typeof record[key] === "string") {
-            return [record[key] as string];
+            return [
+              { id: record[key] as string, endpoints: endpointsOf(record) },
+            ];
           }
         }
       }
@@ -108,9 +127,9 @@ function collectModelIds(value: unknown, depth: number): string[] {
   const record = value as Record<string, unknown>;
   for (const key of MODEL_WRAPPER_KEYS) {
     if (key in record) {
-      const ids = collectModelIds(record[key], depth + 1);
-      if (ids.length) {
-        return ids;
+      const entries = collectModelEntries(record[key], depth + 1);
+      if (entries.length) {
+        return entries;
       }
     }
   }
@@ -125,14 +144,32 @@ function collectModelIds(value: unknown, depth: number): string[] {
     entries.length &&
     entries.every(([, entry]) => entry && typeof entry === "object")
   ) {
-    return entries.map(([key]) => key);
+    return entries.map(([key]) => ({ id: key }));
   }
   return [];
 }
 
-export function parseModelIds(payload: unknown): string[] {
-  const ids = collectModelIds(payload, 0)
-    .map((id) => id.trim())
+/**
+ * Read the model ids out of a catalogue payload.
+ *
+ * `requiredEndpoint` drops ids the catalogue declares as served elsewhere only.
+ * Command Code lists every model with `supported_endpoints`, and its Claude
+ * ids answer `must be called via /provider/v1/messages` on the chat route, so
+ * they must not be offered. An id whose entry declares no endpoints is kept:
+ * most gateways omit the field and serve everything.
+ */
+export function parseModelIds(
+  payload: unknown,
+  requiredEndpoint = "",
+): string[] {
+  const ids = collectModelEntries(payload, 0)
+    .filter(
+      (entry) =>
+        !requiredEndpoint ||
+        !entry.endpoints?.length ||
+        entry.endpoints.includes(requiredEndpoint),
+    )
+    .map((entry) => entry.id.trim())
     .filter(Boolean);
   return [...new Set(ids)];
 }
@@ -777,7 +814,10 @@ export async function fetchModelIds(
         detail,
       });
     }
-    const listed = parseModelIds(parseJsonBody(await response.text()));
+    const listed = parseModelIds(
+      parseJsonBody(await response.text()),
+      config.requiredEndpoint,
+    );
     const ids = selectModelIds(
       listed,
       config.modelPrefix,
