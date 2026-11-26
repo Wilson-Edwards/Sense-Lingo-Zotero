@@ -4,6 +4,7 @@ import {
   attachPreprocessMenuToWindow,
   registerPreprocessMenu,
 } from "./modules/preprocess/menu";
+import { registerMultiClickSelection } from "./modules/reader/multiClickSelection";
 import { registerSelectionPopup } from "./modules/reader/selectionPopup";
 import { attachShortcutToWindow } from "./modules/reader/shortcuts";
 import { registerPrefsScripts } from "./modules/ui/preferences";
@@ -34,6 +35,7 @@ async function onStartup(): Promise<void> {
   }
 
   addon.data.disposers.push(registerSelectionPopup());
+  addon.data.disposers.push(registerMultiClickSelection());
   addon.data.disposers.push(registerPreprocessMenu());
 
   // A job cannot outlive the process; anything still marked `running` belongs

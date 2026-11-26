@@ -32,6 +32,7 @@ import {
   rememberPartial,
   trackSlot,
 } from "./popupStream";
+import { attachMultiClickSelectionToDoc } from "./multiClickSelection";
 import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
@@ -148,6 +149,11 @@ function captureSelection(
   const readerDoc = event.reader?._iframeWindow?.document;
   if (readerDoc && readerDoc !== event.doc) {
     docs.push(...collectReaderDocuments(readerDoc));
+  }
+  // `renderToolbar` normally attaches this before the first selection. Also do
+  // it here as a guarded fallback for Zotero builds that omit that event.
+  for (const doc of docs) {
+    attachMultiClickSelectionToDoc(doc);
   }
 
   // Zotero's annotation text can include the next visual line when the range
