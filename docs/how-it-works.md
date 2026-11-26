@@ -267,7 +267,8 @@ sentenceKey = sha1(normalizeText(sentence))
 **整本预翻译**（条目右键菜单或设置页按钮）从 EPUB 的每个分节切句抽词；只出现一次的词、
 短句、标题、短章节、目录和前置页面也会进入候选集。双语 EPUB 默认按 Zotero 当前界面语言
 过滤候选（`prefetchLanguageFilter = system`）；也可明确选择不过滤、过滤含汉字候选或过滤
-拉丁字母候选。
+拉丁字母候选。过滤同时作用于 token 和句子：只有全部 token 都属于待过滤语言时才整句跳过；
+只要存在其它语言 token 就保留句子，仅跳过句中匹配的 token。
 候选词再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词一次翻多条，逐块写入同一个库：
 
 ```text

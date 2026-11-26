@@ -85,6 +85,27 @@ describe("extractCandidates", () => {
     expect(keys.has("indexing")).toBe(true);
     expect(keys.has("数据库索引可以提高查询速度")).toBe(false);
     expect(keys.has("mixed中文")).toBe(false);
+    expect(keys.has("token")).toBe(true);
+  });
+
+  it("keeps a sentence when any token uses another language", () => {
+    const items = extractCandidates(
+      [
+        {
+          href: "OEBPS/bilingual.xhtml",
+          text:
+            "PostgreSQL 是一个数据库系统。 " +
+            "Use 中文 terms carefully. Database indexes improve queries.",
+        },
+      ],
+      { ...OPTIONS, languageFilter: "han" },
+    );
+    const keys = new Set(items.map((item) => item.wordKey));
+    expect(keys.has("postgresql")).toBe(true);
+    expect(keys.has("use")).toBe(true);
+    expect(keys.has("中文")).toBe(false);
+    expect(keys.has("terms")).toBe(true);
+    expect(keys.has("database")).toBe(true);
   });
 
   it("defaults the system filter to the Zotero UI language", () => {

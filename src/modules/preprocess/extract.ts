@@ -104,6 +104,24 @@ function excludedByLanguage(
   }
 }
 
+/** Skip a sentence only when every token belongs to the filtered language. */
+function excludedSentenceByLanguage(
+  tokens: readonly string[],
+  filter: PreprocessLanguageFilter,
+  systemLocale: string,
+): boolean {
+  if (filter === "none" || !tokens.length) {
+    return false;
+  }
+  let excluded = 0;
+  for (const token of tokens) {
+    if (excludedByLanguage(token, filter, systemLocale)) {
+      excluded += 1;
+    }
+  }
+  return excluded === tokens.length;
+}
+
 interface SentenceStat {
   sentence: string;
   /** Occurrences of the word inside this sentence. */
@@ -140,11 +158,19 @@ export function extractCandidates(
     for (const sentence of splitSentences(text, options.maxSentenceChars)) {
       sentenceOrder += 1;
       TOKEN_RE.lastIndex = 0;
+      const tokens = sentence.match(TOKEN_RE) ?? [];
+      if (
+        excludedSentenceByLanguage(
+          tokens,
+          languageFilter,
+          options.systemLocale ?? "",
+        )
+      ) {
+        continue;
+      }
       // Hash the sentence once: the token loop below can run hundreds of times.
       const keyForSentence = sentenceKey(sentence);
-      let match: RegExpExecArray | null;
-      while ((match = TOKEN_RE.exec(sentence))) {
-        const token = match[0];
+      for (const token of tokens) {
         if (
           token.length < 2 ||
           excludedByLanguage(token, languageFilter, options.systemLocale ?? "")

@@ -38,7 +38,7 @@
 | `prefetchBaseURL`          | string       | `""`       | ✅     | 预处理服务商的接口地址；留空使用该预设                                                                               |
 | `prefetchModel`            | string       | `""`       | ✅     | 预处理服务商的模型；留空使用该预设，可点「获取模型」拉取                                                             |
 | `prefetchProviderConfigs`  | string(JSON) | `""`       | —      | 预处理服务商按预设分别保存的 `apiKey` / `baseURL` / `model`，与 `providerConfigs` 互不影响                           |
-| `prefetchLanguageFilter`   | string       | `system`   | ✅     | 预处理候选语言过滤：默认按 Zotero 界面语言；也可用 `none` / `han` / `latin` 覆盖                                    |
+| `prefetchLanguageFilter`   | string       | `system`   | ✅     | 默认按 Zotero 界面语言过滤 token；仅全部 token 匹配时跳过整句；可用 `none` / `han` / `latin` 覆盖                   |
 | `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                                       |
 | `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                                         |
 | `disableThinking`          | boolean      | `true`     | ✅     | **禁止思考**：请求里带 `reasoning: { enabled: false }`。仅 ClinePass 预设生效（其余预设不会发送该字段）              |
