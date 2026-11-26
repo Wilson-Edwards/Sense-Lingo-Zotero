@@ -20,8 +20,6 @@ export interface ExtractOptions {
   maxSentenceChars: number;
   /** Representative sentences stored per word. */
   maxSentencesPerWord: number;
-  /** Drop compounds such as `well-known`. */
-  skipHyphenated?: boolean;
 }
 
 export interface ExtractedItem {
@@ -35,137 +33,6 @@ export interface ExtractedItem {
 
 /** `\p{L}` start, then letters, combining marks, apostrophes and hyphens. */
 const TOKEN_RE = /\p{L}[\p{L}\p{M}'’-]*/gu;
-
-/** High-frequency function words: their translations add no reading value. */
-const STOPWORDS = new Set([
-  "a",
-  "about",
-  "above",
-  "after",
-  "again",
-  "against",
-  "all",
-  "also",
-  "am",
-  "an",
-  "and",
-  "any",
-  "are",
-  "as",
-  "at",
-  "be",
-  "because",
-  "been",
-  "before",
-  "being",
-  "below",
-  "between",
-  "both",
-  "but",
-  "by",
-  "can",
-  "could",
-  "did",
-  "do",
-  "does",
-  "doing",
-  "down",
-  "during",
-  "each",
-  "few",
-  "for",
-  "from",
-  "further",
-  "had",
-  "has",
-  "have",
-  "having",
-  "he",
-  "her",
-  "here",
-  "hers",
-  "herself",
-  "him",
-  "himself",
-  "his",
-  "how",
-  "i",
-  "if",
-  "in",
-  "into",
-  "is",
-  "it",
-  "its",
-  "itself",
-  "just",
-  "me",
-  "more",
-  "most",
-  "my",
-  "myself",
-  "no",
-  "nor",
-  "not",
-  "now",
-  "of",
-  "off",
-  "on",
-  "once",
-  "only",
-  "or",
-  "other",
-  "our",
-  "ours",
-  "ourselves",
-  "out",
-  "over",
-  "own",
-  "same",
-  "she",
-  "should",
-  "so",
-  "some",
-  "such",
-  "than",
-  "that",
-  "the",
-  "their",
-  "theirs",
-  "them",
-  "themselves",
-  "then",
-  "there",
-  "these",
-  "they",
-  "this",
-  "those",
-  "through",
-  "to",
-  "too",
-  "under",
-  "until",
-  "up",
-  "very",
-  "was",
-  "we",
-  "were",
-  "what",
-  "when",
-  "where",
-  "which",
-  "while",
-  "who",
-  "whom",
-  "why",
-  "will",
-  "with",
-  "would",
-  "you",
-  "your",
-  "yours",
-  "yourself",
-  "yourselves",
-]);
 
 interface SentenceStat {
   sentence: string;
@@ -181,33 +48,6 @@ interface WordStat {
   sentences: Map<string, SentenceStat>;
 }
 
-/** Characters that mean "this token is part of a URL or an address". */
-const URL_NEIGHBOURS = new Set(["/", ":", "@", "#", "\\", "?"]);
-
-function isUsefulToken(
-  token: string,
-  sentence: string,
-  start: number,
-  skipHyphenated: boolean,
-): boolean {
-  if (token.length < 2) {
-    return false;
-  }
-  if (skipHyphenated && /[-‐‑‒–—]/.test(token)) {
-    return false;
-  }
-  const key = token.normalize("NFC").toLowerCase();
-  if (STOPWORDS.has(key)) {
-    return false;
-  }
-  const before = start > 0 ? sentence[start - 1] : "";
-  const after = sentence[start + token.length] ?? "";
-  if (URL_NEIGHBOURS.has(before) || URL_NEIGHBOURS.has(after)) {
-    return false;
-  }
-  return true;
-}
-
 /**
  * Walk every section, split it into sentences, and collect word statistics.
  *
@@ -219,7 +59,6 @@ export function extractCandidates(
   sections: readonly PreprocessSection[],
   options: ExtractOptions,
 ): ExtractedItem[] {
-  const skipHyphenated = options.skipHyphenated ?? true;
   const stats = new Map<string, WordStat>();
   let sentenceOrder = 0;
 
@@ -233,13 +72,10 @@ export function extractCandidates(
       let match: RegExpExecArray | null;
       while ((match = TOKEN_RE.exec(sentence))) {
         const token = match[0];
-        if (!isUsefulToken(token, sentence, match.index, skipHyphenated)) {
+        if (token.length < 2) {
           continue;
         }
         const key = wordKey(token);
-        if (!key) {
-          continue;
-        }
         let stat = stats.get(key);
         if (!stat) {
           stat = {

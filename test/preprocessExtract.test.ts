@@ -27,7 +27,7 @@ describe("extractCandidates", () => {
     expect(keys.has("delta")).toBe(true);
   });
 
-  it("keeps every distinct eligible word without a vocabulary cap", () => {
+  it("keeps every distinct token without a vocabulary cap", () => {
     const keys = new Set(
       words([
         {
@@ -52,11 +52,22 @@ describe("extractCandidates", () => {
     );
   });
 
-  it("skips stopwords", () => {
-    const keys = new Set(words([chapter]));
-    expect(keys.has("the")).toBe(false);
-    expect(keys.has("here")).toBe(false);
-    expect(keys.has("again")).toBe(false);
+  it("keeps stopwords but drops single-letter words", () => {
+    const keys = new Set(
+      words([
+        {
+          href: "OEBPS/ch1.xhtml",
+          text: "I am a word in the book. 我，爱中文。",
+        },
+      ]),
+    );
+    expect(keys.has("i")).toBe(false);
+    expect(keys.has("a")).toBe(false);
+    expect(keys.has("我")).toBe(false);
+    expect(keys.has("爱中文")).toBe(true);
+    expect(keys.has("am")).toBe(true);
+    expect(keys.has("in")).toBe(true);
+    expect(keys.has("the")).toBe(true);
   });
 
   it("keeps short titles and words from short front-matter sections", () => {
@@ -66,7 +77,7 @@ describe("extractCandidates", () => {
     expect(keys.has("tinyword")).toBe(true);
   });
 
-  it("drops hyphenated compounds and URL fragments", () => {
+  it("keeps hyphenated compounds and URL fragments", () => {
     const keys = new Set(
       extractCandidates(
         [
@@ -80,9 +91,11 @@ describe("extractCandidates", () => {
         OPTIONS,
       ).map((item) => item.wordKey),
     );
-    expect(keys.has("well-known")).toBe(false);
-    expect(keys.has("pathword")).toBe(false);
-    expect(keys.has("example")).toBe(false);
+    expect(keys.has("well-known")).toBe(true);
+    expect(keys.has("https")).toBe(true);
+    expect(keys.has("example")).toBe(true);
+    expect(keys.has("com")).toBe(true);
+    expect(keys.has("pathword")).toBe(true);
   });
 
   it("samples at most maxSentencesPerWord sentences", () => {
