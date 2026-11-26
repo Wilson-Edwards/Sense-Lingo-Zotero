@@ -145,6 +145,7 @@ export async function translateInline(
   target: ReaderTarget,
   text: string,
   onDelta?: (partialTranslation: string) => void,
+  options: { refreshCache?: boolean } = {},
 ): Promise<InlineTranslation> {
   const trimmed = (text ?? "").trim();
   if (!trimmed) {
@@ -157,6 +158,10 @@ export async function translateInline(
       itemTitle: target.itemTitle,
       getLocalTexts: () => readerTexts(target),
       fingerprint: target.anchor?.fingerprint,
+      // A popup refresh must reach the provider and replace an eligible local
+      // cache entry even when automatic write-back is disabled.
+      skipCache: options.refreshCache,
+      forceCacheWrite: options.refreshCache,
       onDelta,
     });
     return {

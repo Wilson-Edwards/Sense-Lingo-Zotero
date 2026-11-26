@@ -2,6 +2,8 @@
 popup-translate = 翻译
 popup-translate-title = 结合所在句子，用 AI 翻译选中的词或句子
 popup-cache-hint = 来自本地缓存
+popup-refresh = 刷新
+popup-refresh-title = 重新请求翻译并更新本地缓存
 
 # Result panel
 panel-kind-word = 词

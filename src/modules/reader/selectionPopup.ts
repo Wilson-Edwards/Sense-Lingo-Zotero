@@ -25,7 +25,11 @@ import {
   POPUP_FONT_SIZE_DEFAULT,
   popupMaxWidth,
 } from "./popupFontSize";
-import { peekPopupTranslation, translateInPopup } from "./popupTranslation";
+import {
+  peekPopupTranslation,
+  refreshPopupTranslation,
+  translateInPopup,
+} from "./popupTranslation";
 import {
   clearPartial,
   forEachLiveSlot,
@@ -354,6 +358,11 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   }
 
   let button: HTMLButtonElement | null = null;
+  const refreshButton = doc.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.textContent = getString("popup-refresh");
+  refreshButton.title = getString("popup-refresh-title");
+  refreshButton.style.cssText = `${BUTTON_STYLE};display:none;margin-top:4px;align-self:flex-end`;
   let running = false;
 
   const apply = (promise: Promise<InlineTranslation>): void => {
@@ -377,9 +386,7 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
         if (button) {
           button.style.display = result.ok ? "none" : "";
         }
-        if (!result.ok) {
-          running = false;
-        }
+        refreshButton.style.display = result.ok ? "" : "none";
       })
       .catch(() => {
         const failed: InlineTranslation = {
@@ -389,30 +396,53 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
         forEachLiveSlot(doc, cacheKey, (live) =>
           showInlineResult(live, failed),
         );
-        running = false;
         if (button) {
           button.style.display = "";
         }
+        refreshButton.style.display = "none";
+      })
+      .finally(() => {
+        running = false;
+        refreshButton.disabled = false;
       });
   };
 
-  const run = (): void => {
+  const run = (refresh = false): void => {
     // An in-flight request already owns the partial text; only a genuinely new
     // request resets it.
-    if (!peekPopupTranslation(doc, cacheKey)) {
+    if (refresh || !peekPopupTranslation(doc, cacheKey)) {
       clearPartial(doc, cacheKey);
     }
-    apply(
-      translateInPopup(doc, cacheKey, () =>
-        translateInline(target, text, (partial) => {
+    if (refresh) {
+      refreshButton.disabled = true;
+      forEachLiveSlot(doc, cacheKey, (live) => showLoading(live));
+    }
+    const request = () =>
+      translateInline(
+        target,
+        text,
+        (partial) => {
           rememberPartial(doc, cacheKey, partial);
           forEachLiveSlot(doc, cacheKey, (live) =>
             showInlinePartial(live, partial),
           );
-        }),
-      ),
+        },
+        { refreshCache: refresh },
+      );
+    apply(
+      refresh
+        ? refreshPopupTranslation(doc, cacheKey, request)
+        : translateInPopup(doc, cacheKey, request),
     );
   };
+
+  refreshButton.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!running) {
+      run(true);
+    }
+  });
 
   const autoTranslate = getBooleanPref("autoTranslate", false);
   if (!autoTranslate && getBooleanPref("showInPopup", true)) {
@@ -446,7 +476,7 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
   if (button) {
     nodes.push(button);
   }
-  nodes.push(slot);
+  nodes.push(slot, refreshButton);
 
   if (typeof event.append === "function") {
     event.append(...nodes);

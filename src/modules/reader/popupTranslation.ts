@@ -38,6 +38,28 @@ export function translateInPopup(
     return cached;
   }
 
+  return storePopupTranslation(doc, text, request, now);
+}
+
+/**
+ * Replace an in-flight or recently completed popup result with a new request.
+ * The refresh button uses this to bypass the popup's short-lived UI cache.
+ */
+export function refreshPopupTranslation(
+  doc: Document,
+  text: string,
+  request: () => Promise<InlineTranslation>,
+  now: number = Date.now(),
+): Promise<InlineTranslation> {
+  return storePopupTranslation(doc, text, request, now);
+}
+
+function storePopupTranslation(
+  doc: Document,
+  text: string,
+  request: () => Promise<InlineTranslation>,
+  now: number,
+): Promise<InlineTranslation> {
   const promise = request().then((result) => {
     // Failures are not worth reusing: a later popup should retry.
     if (!result.ok && entries.get(doc)?.promise === promise) {

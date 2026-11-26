@@ -2,6 +2,8 @@
 popup-translate = Translate
 popup-translate-title = Translate the selection with AI, using its sentence as context
 popup-cache-hint = Served from the local cache
+popup-refresh = Refresh
+popup-refresh-title = Request a new translation and update the local cache
 
 # Result panel
 panel-kind-word = WORD

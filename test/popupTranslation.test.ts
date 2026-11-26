@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   POPUP_RESULT_TTL_MS,
   peekPopupTranslation,
+  refreshPopupTranslation,
   translateInPopup,
 } from "../src/modules/reader/popupTranslation";
 
@@ -74,6 +75,28 @@ describe("translateInPopup", () => {
       translateInPopup(doc, "mitigate", request, 1001),
     ).resolves.toEqual({ ok: true, translation: "减轻" });
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("forces a new request when the popup is refreshed", async () => {
+    const doc = makeDoc();
+    const firstRequest = vi.fn(() => succeeds("减轻"));
+    const refreshRequest = vi.fn(() => succeeds("缓解"));
+    await translateInPopup(doc, "mitigate", firstRequest, 1000);
+
+    const refreshed = refreshPopupTranslation(
+      doc,
+      "mitigate",
+      refreshRequest,
+      1010,
+    );
+
+    await expect(refreshed).resolves.toEqual({
+      ok: true,
+      translation: "缓解",
+    });
+    expect(firstRequest).toHaveBeenCalledTimes(1);
+    expect(refreshRequest).toHaveBeenCalledTimes(1);
+    expect(peekPopupTranslation(doc, "mitigate", 1011)).toBe(refreshed);
   });
 });
 

@@ -182,6 +182,8 @@ export interface TranslateInput {
   userPromptOverride?: string;
   /** Bypass the cache read, so "retranslate" always hits the provider. */
   skipCache?: boolean;
+  /** Write an eligible result even when automatic cache write-back is off. */
+  forceCacheWrite?: boolean;
   /**
    * Progressive output. Called with the translation assembled so far every time
    * the model streams a chunk; not called when `stream` is off. The text is
@@ -416,7 +418,11 @@ export async function translate(
   // Store what this click just paid for, so the next click on the same word in
   // the same sentence is instant. Fire-and-forget: a failed write must never
   // affect the answer already on screen.
-  if (cacheEligible && settings.autoCacheOnMiss && input.attachmentItemID) {
+  if (
+    cacheEligible &&
+    (settings.autoCacheOnMiss || input.forceCacheWrite) &&
+    input.attachmentItemID
+  ) {
     const row = entryFromTranslation({
       attachmentID: input.attachmentItemID,
       word: text,
