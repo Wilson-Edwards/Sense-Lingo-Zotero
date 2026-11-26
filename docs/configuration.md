@@ -21,6 +21,7 @@
 | 选区类型     | 判定方式（自动 / 一律按词 / 一律按句）、判为「词」的最大词数与字符数                  |
 | 上下文       | 划词时带出所在句、划句时带出前后各一句、单句长度上限                                  |
 | 提示词模板   | 「划词模板」「划句模板」两组：多套模板的增删改 / 复制、当前模板选择、system 编辑      |
+| 缓存与预翻译 | 本地缓存、自动预翻译、批量参数、预处理语言过滤、任务管理                              |
 | 界面与高级   | 弹窗按钮、自动翻译、快捷键、弹窗字号、调试日志、流式输出、请求超时                    |
 
 ## 完整配置表
@@ -37,6 +38,7 @@
 | `prefetchBaseURL`          | string       | `""`       | ✅     | 预处理服务商的接口地址；留空使用该预设                                                                               |
 | `prefetchModel`            | string       | `""`       | ✅     | 预处理服务商的模型；留空使用该预设，可点「获取模型」拉取                                                             |
 | `prefetchProviderConfigs`  | string(JSON) | `""`       | —      | 预处理服务商按预设分别保存的 `apiKey` / `baseURL` / `model`，与 `providerConfigs` 互不影响                           |
+| `prefetchLanguageFilter`   | string       | `system`   | ✅     | 预处理候选语言过滤：默认按 Zotero 界面语言；也可用 `none` / `han` / `latin` 覆盖                                    |
 | `temperature`              | string       | `"0.3"`    | ✅     | 越低越稳定，翻译建议 0～0.5；读取时钳制在 0～2                                                                       |
 | `maxTokens`                | number       | `1024`     | ✅     | 单次回复上限                                                                                                         |
 | `disableThinking`          | boolean      | `true`     | ✅     | **禁止思考**：请求里带 `reasoning: { enabled: false }`。仅 ClinePass 预设生效（其余预设不会发送该字段）              |

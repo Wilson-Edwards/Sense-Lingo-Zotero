@@ -63,6 +63,8 @@ pref("autoCacheOnMiss", true);
 pref("prefetchConcurrency", 2);
 pref("prefetchBatchSize", 12);
 pref("prefetchMaxSentencesPerWord", 3);
+// Follow the Zotero/computer language unless the user chooses an override.
+pref("prefetchLanguageFilter", "system");
 pref("prefetchDelayMs", 200);
 // Off by default: opening a book must never spend money silently.
 pref("prefetchOnOpen", false);

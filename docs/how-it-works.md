@@ -265,8 +265,10 @@ sentenceKey = sha1(normalizeText(sentence))
 - 数据库打不开、条目格式不对、EPUB 解析失败都只会让「这次没命中」，整条链路静默回落到 AI。
 
 **整本预翻译**（条目右键菜单或设置页按钮）从 EPUB 的每个分节切句抽词；只出现一次的词、
-短句、标题、短章节、目录和前置页面也会进入候选集。候选词再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词
-一次翻多条，逐块写入同一个库：
+短句、标题、短章节、目录和前置页面也会进入候选集。双语 EPUB 默认按 Zotero 当前界面语言
+过滤候选（`prefetchLanguageFilter = system`）；也可明确选择不过滤、过滤含汉字候选或过滤
+拉丁字母候选。
+候选词再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词一次翻多条，逐块写入同一个库：
 
 ```text
 EPUB 分节 → splitSentences（与点击同源）→ 抽词/按频次排序/每词采样 ≤3 句

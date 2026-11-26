@@ -23,7 +23,7 @@ import {
   type CacheEntryInput,
 } from "../cache/db";
 import { promptHash } from "../cache/keys";
-import { getNumberPref } from "../../utils/prefs";
+import { getNumberPref, getStringPref } from "../../utils/prefs";
 import { getString } from "../../utils/locale";
 import { log, warn } from "../../utils/logger";
 import { readSettings, type PluginSettings } from "../translate";
@@ -35,7 +35,11 @@ import {
   countAnswerLines,
   parseBatchOutput,
 } from "./batch";
-import { extractCandidates, type PreprocessSection } from "./extract";
+import {
+  extractCandidates,
+  normalizePreprocessLanguageFilter,
+  type PreprocessSection,
+} from "./extract";
 
 /** Rough character budget per request, after the item-count limit. */
 const BATCH_MAX_CHARS = 6000;
@@ -310,6 +314,10 @@ class PreprocessJob {
     const candidates = extractCandidates(sections, {
       maxSentenceChars: settings.maxSentenceChars,
       maxSentencesPerWord: getNumberPref("prefetchMaxSentencesPerWord", 3),
+      languageFilter: normalizePreprocessLanguageFilter(
+        getStringPref("prefetchLanguageFilter", "system"),
+      ),
+      systemLocale: Zotero.locale,
     });
     return candidates.map((candidate) => ({
       word: candidate.word,

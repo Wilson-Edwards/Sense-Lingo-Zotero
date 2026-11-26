@@ -59,6 +59,7 @@ import {
   isJobRunning,
   startPreprocess,
 } from "../preprocess/job";
+import { normalizePreprocessLanguageFilter } from "../preprocess/extract";
 import { isEpubAttachment } from "../preprocess/menu";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -229,6 +230,34 @@ function populateStaticSelects(win: Window): void {
       getString("pref-kind-sentence"),
     );
   }
+
+  const languageFilter = byId<HTMLSelectElement>(win, "prefetchLanguageFilter");
+  if (languageFilter && !languageFilter.options.length) {
+    addOption(
+      win,
+      languageFilter,
+      "system",
+      getString("pref-prefetch-language-system"),
+    );
+    addOption(
+      win,
+      languageFilter,
+      "none",
+      getString("pref-prefetch-language-none"),
+    );
+    addOption(
+      win,
+      languageFilter,
+      "han",
+      getString("pref-prefetch-language-han"),
+    );
+    addOption(
+      win,
+      languageFilter,
+      "latin",
+      getString("pref-prefetch-language-latin"),
+    );
+  }
 }
 
 function syncFromPrefs(win: Window): void {
@@ -243,6 +272,12 @@ function syncFromPrefs(win: Window): void {
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
   if (kindSelect) {
     kindSelect.value = String(getPref("selectionKindMode") || "auto");
+  }
+  const languageFilter = byId<HTMLSelectElement>(win, "prefetchLanguageFilter");
+  if (languageFilter) {
+    languageFilter.value = normalizePreprocessLanguageFilter(
+      getPref("prefetchLanguageFilter"),
+    );
   }
 
   for (const key of TEXT_KEYS) {
@@ -1204,6 +1239,14 @@ function bindEvents(win: Window): void {
   const kindSelect = byId<HTMLSelectElement>(win, "selectionKindMode");
   kindSelect?.addEventListener("change", () => {
     setPref("selectionKindMode", kindSelect.value);
+  });
+
+  const languageFilter = byId<HTMLSelectElement>(win, "prefetchLanguageFilter");
+  languageFilter?.addEventListener("change", () => {
+    setPref(
+      "prefetchLanguageFilter",
+      normalizePreprocessLanguageFilter(languageFilter.value),
+    );
   });
 
   for (const key of TEXT_KEYS) {

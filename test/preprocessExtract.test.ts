@@ -70,6 +70,51 @@ describe("extractCandidates", () => {
     expect(keys.has("the")).toBe(true);
   });
 
+  it("can exclude candidates containing Han characters", () => {
+    const items = extractCandidates(
+      [
+        {
+          href: "OEBPS/bilingual.xhtml",
+          text: "Database indexing improves queries. 数据库索引可以提高查询速度。 Mixed中文 token.",
+        },
+      ],
+      { ...OPTIONS, languageFilter: "han" },
+    );
+    const keys = new Set(items.map((item) => item.wordKey));
+    expect(keys.has("database")).toBe(true);
+    expect(keys.has("indexing")).toBe(true);
+    expect(keys.has("数据库索引可以提高查询速度")).toBe(false);
+    expect(keys.has("mixed中文")).toBe(false);
+  });
+
+  it("defaults the system filter to the Zotero UI language", () => {
+    const sections = [
+      {
+        href: "OEBPS/bilingual.xhtml",
+        text: "English words remain here. 中文内容保留在这里。",
+      },
+    ];
+    const chineseUi = new Set(
+      extractCandidates(sections, {
+        ...OPTIONS,
+        languageFilter: "system",
+        systemLocale: "zh-CN",
+      }).map((item) => item.wordKey),
+    );
+    expect(chineseUi.has("english")).toBe(true);
+    expect(chineseUi.has("中文内容保留在这里")).toBe(false);
+
+    const englishUi = new Set(
+      extractCandidates(sections, {
+        ...OPTIONS,
+        languageFilter: "system",
+        systemLocale: "en-US",
+      }).map((item) => item.wordKey),
+    );
+    expect(englishUi.has("english")).toBe(false);
+    expect(englishUi.has("中文内容保留在这里")).toBe(true);
+  });
+
   it("keeps short titles and words from short front-matter sections", () => {
     const keys = new Set(
       words([{ href: "OEBPS/nav.xhtml", text: "Tinyword" }, chapter]),

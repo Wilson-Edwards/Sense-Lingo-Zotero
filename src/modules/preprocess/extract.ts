@@ -15,11 +15,17 @@ export interface PreprocessSection {
   text: string;
 }
 
+export type PreprocessLanguageFilter = "system" | "none" | "han" | "latin";
+
 export interface ExtractOptions {
   /** Same cap as the click path, so both cut a long sentence identically. */
   maxSentenceChars: number;
   /** Representative sentences stored per word. */
   maxSentencesPerWord: number;
+  /** Skip candidates from translated text in bilingual EPUBs. */
+  languageFilter?: PreprocessLanguageFilter;
+  /** Zotero UI locale, used when `languageFilter` is `system`. */
+  systemLocale?: string;
 }
 
 export interface ExtractedItem {
@@ -33,6 +39,70 @@ export interface ExtractedItem {
 
 /** `\p{L}` start, then letters, combining marks, apostrophes and hyphens. */
 const TOKEN_RE = /\p{L}[\p{L}\p{M}'’-]*/gu;
+const HAN_RE = /\p{Script=Han}/u;
+const LATIN_RE = /\p{Script=Latin}/u;
+const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
+const GREEK_RE = /\p{Script=Greek}/u;
+const ARABIC_RE = /\p{Script=Arabic}/u;
+const HIRAGANA_RE = /\p{Script=Hiragana}/u;
+const KATAKANA_RE = /\p{Script=Katakana}/u;
+const HANGUL_RE = /\p{Script=Hangul}/u;
+const KHMER_RE = /\p{Script=Khmer}/u;
+const THAI_RE = /\p{Script=Thai}/u;
+
+export function normalizePreprocessLanguageFilter(
+  value: unknown,
+): PreprocessLanguageFilter {
+  return value === "none" || value === "han" || value === "latin"
+    ? value
+    : "system";
+}
+
+function excludedByLanguage(
+  token: string,
+  filter: PreprocessLanguageFilter,
+  systemLocale: string,
+): boolean {
+  if (filter === "none") {
+    return false;
+  }
+  if (filter === "han") {
+    return HAN_RE.test(token);
+  }
+  if (filter === "latin") {
+    return LATIN_RE.test(token);
+  }
+
+  const language = systemLocale.toLowerCase().split(/[-_]/u)[0];
+  switch (language) {
+    case "zh":
+      return HAN_RE.test(token);
+    case "ja":
+      return (
+        HAN_RE.test(token) || HIRAGANA_RE.test(token) || KATAKANA_RE.test(token)
+      );
+    case "ko":
+      return HANGUL_RE.test(token) || HAN_RE.test(token);
+    case "ru":
+    case "uk":
+    case "bg":
+    case "sr":
+      return CYRILLIC_RE.test(token);
+    case "el":
+      return GREEK_RE.test(token);
+    case "ar":
+    case "fa":
+      return ARABIC_RE.test(token);
+    case "km":
+      return KHMER_RE.test(token);
+    case "th":
+      return THAI_RE.test(token);
+    case "":
+      return false;
+    default:
+      return LATIN_RE.test(token);
+  }
+}
 
 interface SentenceStat {
   sentence: string;
@@ -59,6 +129,9 @@ export function extractCandidates(
   sections: readonly PreprocessSection[],
   options: ExtractOptions,
 ): ExtractedItem[] {
+  const languageFilter = normalizePreprocessLanguageFilter(
+    options.languageFilter,
+  );
   const stats = new Map<string, WordStat>();
   let sentenceOrder = 0;
 
@@ -72,7 +145,10 @@ export function extractCandidates(
       let match: RegExpExecArray | null;
       while ((match = TOKEN_RE.exec(sentence))) {
         const token = match[0];
-        if (token.length < 2) {
+        if (
+          token.length < 2 ||
+          excludedByLanguage(token, languageFilter, options.systemLocale ?? "")
+        ) {
           continue;
         }
         const key = wordKey(token);

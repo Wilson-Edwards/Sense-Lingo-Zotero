@@ -61,6 +61,7 @@ declare namespace _ZoteroTypes {
       prefetchConcurrency: number;
       prefetchBatchSize: number;
       prefetchMaxSentencesPerWord: number;
+      prefetchLanguageFilter: string;
       prefetchDelayMs: number;
       prefetchOnOpen: boolean;
     };
