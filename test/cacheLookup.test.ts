@@ -127,6 +127,50 @@ describe("pickBestCandidate", () => {
     ).not.toBeNull();
   });
 
+  it("reuses multiple identical translations across unseen sentences", () => {
+    const translation = "数据（n.）\n美式音标：/x/\n英式音标：/x/";
+    const hit = pickBestCandidate(
+      [
+        row({ sentence: "Stored context one.", translation }),
+        row({ sentence: "Stored context two.", translation }),
+        row({ sentence: "Stored context three.", translation }),
+      ],
+      "A new unseen context.",
+      STRICT,
+    );
+    expect(hit?.translation).toBe(translation);
+    expect(hit?.score).toBe(0.8);
+  });
+
+  it("does not reuse differing translations across unseen sentences", () => {
+    expect(
+      pickBestCandidate(
+        [
+          row({
+            sentence: "Stored context one.",
+            translation: "数据（n.）",
+          }),
+          row({
+            sentence: "Stored context two.",
+            translation: "资料（n.）",
+          }),
+        ],
+        "A new unseen context.",
+        STRICT,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not treat one translation as stable evidence", () => {
+    expect(
+      pickBestCandidate(
+        [row({ sentence: "Stored context one." })],
+        "A new unseen context.",
+        STRICT,
+      ),
+    ).toBeNull();
+  });
+
   it("returns null without candidates", () => {
     expect(pickBestCandidate([], live, STRICT)).toBeNull();
   });

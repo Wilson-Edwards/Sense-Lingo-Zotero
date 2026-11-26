@@ -33,6 +33,7 @@ import {
   trackSlot,
 } from "./popupStream";
 import { attachMultiClickSelectionToDoc } from "./multiClickSelection";
+import { EMBEDDED_TRANSLATION_SELECTOR } from "./embeddedTranslation";
 import { collectReaderDocuments } from "./readerText";
 import {
   readBestSelectionAnchor,
@@ -108,11 +109,6 @@ interface CapturedSelection {
   text: string;
   anchor: SelectionAnchor;
 }
-
-const EMBEDDED_TRANSLATION_SELECTOR = [
-  ".immersive-translate-target-wrapper",
-  "[data-immersive-translate-translation-element-mark]",
-].join(",");
 
 /**
  * Return only the source-language part of a range that starts outside an

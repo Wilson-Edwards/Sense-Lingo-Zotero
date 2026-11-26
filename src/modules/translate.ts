@@ -32,6 +32,7 @@ import {
   resolveProviderOverride,
   type EffectiveProviderConfig,
 } from "./llm/providers";
+import { isEligibleWordSelection } from "./reader/selectionEligibility";
 import { putEntries } from "./cache/db";
 import { promptHash } from "./cache/keys";
 import { entryFromTranslation, lookupWord } from "./cache/lookup";
@@ -299,6 +300,14 @@ export async function translate(
       maxWords: settings.wordMaxWords,
       maxChars: settings.wordMaxChars,
     });
+
+  // Double-clicking beside a word can leave Firefox selecting punctuation, and
+  // bilingual EPUBs can select their embedded target-language translation.
+  // Neither exists in the preprocessed source vocabulary; do not spend an API
+  // request or create empty/polluted cache keys for it.
+  if (kind === "word" && !isEligibleWordSelection(text, settings.targetLang)) {
+    throw new Error("UNSUPPORTED_WORD_SELECTION");
+  }
 
   const context = await resolveContext(input, kind, settings);
   const rendered = renderPromptFor({

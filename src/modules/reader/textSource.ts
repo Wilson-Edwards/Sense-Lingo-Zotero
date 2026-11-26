@@ -11,6 +11,7 @@
  */
 
 import { log, warn } from "../../utils/logger";
+import { removeEmbeddedTranslations } from "./embeddedTranslation";
 
 const MAX_CACHE_ENTRIES = 8;
 const cache = new Map<number, Promise<string | null>>();
@@ -141,6 +142,12 @@ async function readEpubSections(
         if (!body) {
           continue;
         }
+        // Immersive Translate (and similar tools) can persist their generated
+        // Chinese spans inside the EPUB archive. The parser document is private
+        // to this extraction, so remove them before innerText creates sentence
+        // keys; leaving them in makes preprocessing and live source selection
+        // describe different sentences.
+        removeEmbeddedTranslations(body);
         sections.push({
           href: section.href ?? "",
           text: (body as HTMLElement).innerText || body.textContent || "",

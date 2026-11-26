@@ -10,6 +10,8 @@
  * caller, which tries them one by one against the selected text.
  */
 
+import { sourceTextOfElement } from "./embeddedTranslation";
+
 const MAX_DEPTH = 4;
 /** Shorter texts are UI noise, not content. */
 const MIN_USEFUL_LENGTH = 32;
@@ -20,9 +22,7 @@ function readDocumentText(doc: Document): string {
     if (!body) {
       return "";
     }
-    // `innerText` needs layout; `textContent` is the fallback for detached docs.
-    const text = (body as HTMLElement).innerText || body.textContent || "";
-    return text.trim();
+    return sourceTextOfElement(body);
   } catch {
     return "";
   }

@@ -84,6 +84,9 @@ function messageForError(err: unknown): string {
   if (message === "EMPTY_SELECTION") {
     return getString("error-no-selection");
   }
+  if (message === "UNSUPPORTED_WORD_SELECTION") {
+    return getString("error-unsupported-selection");
+  }
   return message || getString("error-generic");
 }
 

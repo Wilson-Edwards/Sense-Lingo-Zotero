@@ -10,6 +10,7 @@
  */
 
 import type { SentenceFingerprint } from "./sentence";
+import { sourceTextOfElement } from "./embeddedTranslation";
 
 export interface SelectionAnchor {
   contexts: string[];
@@ -41,11 +42,7 @@ const CONTEXT_TAGS = new Set([
 ]);
 
 function textOf(element: Element): string {
-  return (
-    (element as HTMLElement).innerText ||
-    element.textContent ||
-    ""
-  ).trim();
+  return sourceTextOfElement(element);
 }
 
 function containingElement(range: Range): Element | null {

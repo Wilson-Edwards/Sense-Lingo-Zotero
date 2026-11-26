@@ -2,9 +2,10 @@
  * Click-time cache lookup.
  *
  * The stored entry holds the sentence it was translated in. A live selection
- * only matches when its sentence is the *same* sentence: the same word in a
- * different sentence can be a different sense, and showing the wrong sense is
- * worse than paying for one more request.
+ * normally matches only when its sentence is the *same* sentence: the same
+ * word in a different sentence can be a different sense. The one conservative
+ * exception is when at least two sampled contexts produced exactly the same
+ * translation; that stable answer can be reused for an unseen sentence.
  */
 
 import { normalizeText } from "../reader/sentence";
@@ -17,7 +18,7 @@ import {
 import { sentenceKey, wordKey } from "./keys";
 
 export interface Candidate extends CacheEntryRow {
-  /** Merge of every rule below; the highest score wins. */
+  /** Match confidence; contextual matches outrank stable-answer fallback. */
   score: number;
 }
 
@@ -29,6 +30,35 @@ export interface PickOptions {
 }
 
 const STRICT_THRESHOLD = 0.9;
+/** A non-contextual hit backed by at least two identical contextual answers. */
+const IDENTICAL_TRANSLATION_SCORE = 0.8;
+
+function comparableTranslation(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+/**
+ * Reuse an unseen sentence only when multiple sampled contexts independently
+ * produced the same non-empty answer. One row is not evidence of a stable
+ * sense, and differing answers keep the normal context-strict behaviour.
+ */
+function identicalTranslationFallback(
+  rows: readonly CacheEntryRow[],
+): Candidate | null {
+  if (rows.length < 2) {
+    return null;
+  }
+  const expected = comparableTranslation(rows[0].translation);
+  if (
+    !expected ||
+    rows.some(
+      (candidate) => comparableTranslation(candidate.translation) !== expected,
+    )
+  ) {
+    return null;
+  }
+  return { ...rows[0], score: IDENTICAL_TRANSLATION_SCORE };
+}
 
 function commonPrefixLength(a: string, b: string, limit: number): number {
   let length = 0;
@@ -117,6 +147,10 @@ export function pickBestCandidate(
   const threshold = options.strict ? STRICT_THRESHOLD : 0;
   if (best && best.score >= threshold && best.score > 0) {
     return best;
+  }
+  const stable = identicalTranslationFallback(rows);
+  if (stable) {
+    return stable;
   }
   if (options.singleCandidateFallback && rows.length === 1) {
     return { ...rows[0], score: best?.score ?? 0 };
