@@ -113,7 +113,7 @@ Open `Edit` → `Settings` → `Sense Lingo`:
 | `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
 | `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
 | `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
-| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash`     |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash-fast` |
 
 Credentials (key / URL / model) are stored **per provider**, so switching back and forth never
 overwrites the other one. For a local model, choose `Custom` and point the base URL at a local

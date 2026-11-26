@@ -62,8 +62,6 @@ pref("autoCacheOnMiss", true);
 // Book preprocessing (manual batch job)
 pref("prefetchConcurrency", 2);
 pref("prefetchBatchSize", 12);
-pref("prefetchMinOccurrences", 2);
-pref("prefetchMaxWords", 10000);
 pref("prefetchMaxSentencesPerWord", 3);
 pref("prefetchDelayMs", 200);
 // Off by default: opening a book must never spend money silently.

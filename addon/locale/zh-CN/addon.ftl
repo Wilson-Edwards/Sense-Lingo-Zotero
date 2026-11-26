@@ -34,7 +34,7 @@ prefetch-need-context = 请先在设置中开启「划词时带出所在句子�
 prefetch-need-provider = 预处理服务商尚未配置：请在设置中填写它的 API Key，或改为跟随翻译服务商。
 prefetch-not-epub = 请选择一个 EPUB 附件。
 prefetch-no-text = 无法读取该 EPUB 的正文。
-prefetch-no-entries = 没有达到频次阈值的候选词，可调低「最低出现次数」后重试。
+prefetch-no-entries = 没有从该 EPUB 中提取到可预翻译的单词。
 prefetch-no-db = 本地缓存数据库不可用，已跳过预翻译。
 
 # Errors

@@ -121,6 +121,14 @@ describe("parseBatchOutput", () => {
     expect(parseBatchOutput(duplicate, 2, 3)).toBeNull();
   });
 
+  it("accepts a block whose three lines were merged into one", () => {
+    const joined = "大的（adj.） 美式音标：/bɪɡ/ 英式音标：/bɪɡ/";
+    const parsed = parseBatchOutput(`[[1]]\n${joined}\n[[2]]\n${joined}`, 2, 3);
+    expect(parsed).toHaveLength(2);
+    expect(parsed?.[0]?.split("\n")).toHaveLength(3);
+    expect(parsed?.[0]).toContain("美式音标：/bɪɡ/");
+  });
+
   it("rejects a block with the wrong number of lines", () => {
     const raw = `[[1]]\n减轻（v.）\n[[2]]\n${threeLines("提出")}`;
     expect(parseBatchOutput(raw, 2, 3)).toBeNull();

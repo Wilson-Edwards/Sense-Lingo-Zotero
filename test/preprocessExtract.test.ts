@@ -4,10 +4,7 @@ import { extractCandidates } from "../src/modules/preprocess/extract";
 
 const OPTIONS = {
   maxSentenceChars: 400,
-  minOccurrences: 2,
-  maxWords: 100,
   maxSentencesPerWord: 1,
-  skipFrontMatter: true,
 };
 
 function words(sections: Parameters<typeof extractCandidates>[0]) {
@@ -22,12 +19,37 @@ describe("extractCandidates", () => {
       "Delta alone once. Second paragraph alpha beta.",
   };
 
-  it("keeps only words at or above the frequency threshold", () => {
+  it("keeps words that occur only once", () => {
     const keys = new Set(words([chapter]));
     expect(keys.has("alpha")).toBe(true);
     expect(keys.has("beta")).toBe(true);
-    expect(keys.has("gamma")).toBe(false);
-    expect(keys.has("delta")).toBe(false);
+    expect(keys.has("gamma")).toBe(true);
+    expect(keys.has("delta")).toBe(true);
+  });
+
+  it("keeps every distinct eligible word without a vocabulary cap", () => {
+    const keys = new Set(
+      words([
+        {
+          href: "OEBPS/ch1.xhtml",
+          text: "Alpha beta gamma delta epsilon zeta eta theta iota kappa.",
+        },
+      ]),
+    );
+    expect(keys).toEqual(
+      new Set([
+        "alpha",
+        "beta",
+        "gamma",
+        "delta",
+        "epsilon",
+        "zeta",
+        "eta",
+        "theta",
+        "iota",
+        "kappa",
+      ]),
+    );
   });
 
   it("skips stopwords", () => {
@@ -37,24 +59,11 @@ describe("extractCandidates", () => {
     expect(keys.has("again")).toBe(false);
   });
 
-  it("drops front-matter sections", () => {
+  it("keeps short titles and words from short front-matter sections", () => {
     const keys = new Set(
-      words([
-        { href: "OEBPS/nav.xhtml", text: "uniqueword uniqueword." },
-        chapter,
-      ]),
+      words([{ href: "OEBPS/nav.xhtml", text: "Tinyword" }, chapter]),
     );
-    expect(keys.has("uniqueword")).toBe(false);
-  });
-
-  it("drops sections below the minimum length", () => {
-    const keys = new Set(
-      extractCandidates(
-        [{ href: "OEBPS/cover.xhtml", text: "tinyword tinyword." }, chapter],
-        { ...OPTIONS, minSectionChars: 100 },
-      ).map((item) => item.wordKey),
-    );
-    expect(keys.has("tinyword")).toBe(false);
+    expect(keys.has("tinyword")).toBe(true);
   });
 
   it("drops hyphenated compounds and URL fragments", () => {
@@ -68,7 +77,7 @@ describe("extractCandidates", () => {
               "See https://example.com/pathword now. Well-known again.",
           },
         ],
-        { ...OPTIONS, minOccurrences: 1 },
+        OPTIONS,
       ).map((item) => item.wordKey),
     );
     expect(keys.has("well-known")).toBe(false);
@@ -100,7 +109,7 @@ describe("extractCandidates", () => {
           text: "Echo echo echo appears repeatedly in this sentence. Echo appears again.",
         },
       ],
-      { ...OPTIONS, minOccurrences: 1, maxSentencesPerWord: 5 },
+      { ...OPTIONS, maxSentencesPerWord: 5 },
     );
     const echo = items.filter((item) => item.wordKey === "echo");
     expect(echo).toHaveLength(2);

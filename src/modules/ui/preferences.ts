@@ -8,8 +8,14 @@
  */
 
 import { getString } from "../../utils/locale";
+import { warn } from "../../utils/logger";
 import { getNumberPref, getPref, setPref, setPrefRaw } from "../../utils/prefs";
-import { clearCache, getCacheStats } from "../cache/db";
+import {
+  clearCache,
+  getCacheStats,
+  listAttachmentStates,
+  type AttachmentState,
+} from "../cache/db";
 import { fetchModelIds } from "../llm/client";
 import {
   EMPTY_PROVIDER_CREDENTIALS,
@@ -49,6 +55,7 @@ import type { SelectionKind } from "../reader/selectionKind";
 import { normalizePopupFontSize } from "../reader/popupFontSize";
 import {
   cancelActiveJob,
+  getActiveJobProgress,
   isJobRunning,
   startPreprocess,
 } from "../preprocess/job";
@@ -80,8 +87,6 @@ const NUMBER_KEYS = [
   "requestTimeoutMs",
   "prefetchConcurrency",
   "prefetchBatchSize",
-  "prefetchMinOccurrences",
-  "prefetchMaxWords",
   "prefetchMaxSentencesPerWord",
   "prefetchDelayMs",
 ] as const satisfies readonly PrefKey[];
@@ -876,6 +881,289 @@ async function refreshCacheStats(win: Window): Promise<void> {
   );
 }
 
+type DisplayTask = AttachmentState & { active: boolean };
+
+/** A task may outlive an attachment, so its last known filename is retained in the signature. */
+function titleFromSignature(signature: string): string {
+  const parts = signature.split("|");
+  // `signatureOf()` writes `${modified}|${filename}|${length}`. Join the middle
+  // pieces defensively: a filename is allowed to contain a vertical bar.
+  const filename = parts.length >= 3 ? parts.slice(1, -1).join("|").trim() : "";
+  return filename.replace(/\.epub$/i, "").trim();
+}
+
+/** Prefer the parent bibliographic title over Zotero's generic attachment label. */
+function attachmentTitle(task: AttachmentState): string {
+  try {
+    const item = Zotero.Items.get(task.attachmentID);
+    if (!item) {
+      return (
+        titleFromSignature(task.signature) ||
+        getString("pref-task-missing-book", { id: String(task.attachmentID) })
+      );
+    }
+    const parent = item.parentItemID
+      ? Zotero.Items.get(item.parentItemID)
+      : null;
+    const parentTitle = parent ? parent.getField("title").trim() : "";
+    const filename = (item.attachmentFilename ?? "")
+      .replace(/\.epub$/i, "")
+      .trim();
+    return (
+      parentTitle ||
+      filename ||
+      item.getField("title").trim() ||
+      titleFromSignature(task.signature) ||
+      getString("pref-task-unnamed-book", { id: String(task.attachmentID) })
+    );
+  } catch {
+    return (
+      titleFromSignature(task.signature) ||
+      getString("pref-task-missing-book", { id: String(task.attachmentID) })
+    );
+  }
+}
+
+function taskStateLabel(state: AttachmentState["state"]): string {
+  return getString(`pref-task-state-${state}`);
+}
+
+function taskProgressLabel(task: DisplayTask): string {
+  if (task.active && !task.total) {
+    return getString("pref-task-preparing");
+  }
+  return getString("pref-task-progress", {
+    done: String(task.done),
+    total: String(task.total),
+    failed: String(task.failed),
+  });
+}
+
+function taskButton(
+  win: Window,
+  label: string,
+  onClick: () => void,
+  disabled = false,
+): HTMLButtonElement {
+  const button = win.document.createElementNS(
+    XHTML_NS,
+    "button",
+  ) as HTMLButtonElement;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function taskAttachment(attachmentID: number): Zotero.Item | null {
+  try {
+    const item = Zotero.Items.get(attachmentID);
+    return item && isEpubAttachment(item) ? item : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Select the attachment in the library, then open it in Zotero's reader. */
+async function openTaskAttachment(
+  win: Window,
+  attachmentID: number,
+): Promise<void> {
+  if (!taskAttachment(attachmentID)) {
+    setCacheStatus(win, getString("pref-task-missing"));
+    return;
+  }
+  try {
+    await Zotero.getActiveZoteroPane()?.selectItem?.(attachmentID, true);
+    await Zotero.Reader.open?.(attachmentID);
+  } catch (e) {
+    warn("failed to open preprocessing attachment", attachmentID, e);
+    setCacheStatus(win, getString("pref-task-open-failed"));
+  }
+}
+
+async function runTask(win: Window, attachmentID: number): Promise<void> {
+  if (isJobRunning()) {
+    setCacheStatus(win, getString("pref-cache-busy"));
+    return;
+  }
+  if (!taskAttachment(attachmentID)) {
+    setCacheStatus(win, getString("pref-task-missing"));
+    return;
+  }
+  setCacheStatus(win, getString("pref-cache-running"));
+  await startPreprocess(attachmentID);
+  await Promise.all([refreshCacheStats(win), refreshPreprocessTasks(win)]);
+}
+
+async function restartTask(win: Window, attachmentID: number): Promise<void> {
+  if (isJobRunning()) {
+    setCacheStatus(win, getString("pref-cache-busy"));
+    return;
+  }
+  if (!taskAttachment(attachmentID)) {
+    setCacheStatus(win, getString("pref-task-missing"));
+    return;
+  }
+  if (!win.confirm(getString("pref-task-restart-confirm"))) {
+    return;
+  }
+  await clearCache(attachmentID);
+  await runTask(win, attachmentID);
+}
+
+async function deleteTaskCache(
+  win: Window,
+  attachmentID: number,
+): Promise<void> {
+  if (getActiveJobProgress()?.attachmentID === attachmentID) {
+    setCacheStatus(win, getString("pref-task-stop-before-delete"));
+    return;
+  }
+  if (!win.confirm(getString("pref-task-delete-confirm"))) {
+    return;
+  }
+  await clearCache(attachmentID);
+  await Promise.all([refreshCacheStats(win), refreshPreprocessTasks(win)]);
+}
+
+/** Draw the persistent per-book preprocessing task manager. */
+async function refreshPreprocessTasks(win: Window): Promise<void> {
+  const list = byId<HTMLElement>(win, "preprocessTasks");
+  if (!list) {
+    return;
+  }
+  const active = getActiveJobProgress();
+  const states = await listAttachmentStates();
+  const tasks: DisplayTask[] = states.map((state) => ({
+    ...state,
+    active: active?.attachmentID === state.attachmentID,
+    ...(active?.attachmentID === state.attachmentID
+      ? {
+          state: "running" as const,
+          total: active.total || state.total,
+          done: active.done,
+          failed: active.failed,
+        }
+      : {}),
+  }));
+  if (
+    active &&
+    !tasks.some((task) => task.attachmentID === active.attachmentID)
+  ) {
+    tasks.unshift({
+      attachmentID: active.attachmentID,
+      state: "running",
+      signature: "",
+      textLength: 0,
+      total: active.total,
+      done: active.done,
+      failed: active.failed,
+      updatedAt: Date.now(),
+      active: true,
+    });
+  }
+  tasks.sort(
+    (a, b) => Number(b.active) - Number(a.active) || b.updatedAt - a.updatedAt,
+  );
+
+  list.replaceChildren();
+  if (!tasks.length) {
+    const empty = win.document.createElementNS(XHTML_NS, "div");
+    empty.className = "sl-task-empty";
+    empty.textContent = getString("pref-task-empty");
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const task of tasks) {
+    const row = win.document.createElementNS(XHTML_NS, "div");
+    row.className = "sl-task-row";
+    const details = win.document.createElementNS(XHTML_NS, "div");
+    details.className = "sl-task-details";
+    const title = win.document.createElementNS(
+      XHTML_NS,
+      "button",
+    ) as HTMLButtonElement;
+    title.className = "sl-task-title";
+    title.classList.add("sl-task-open");
+    title.type = "button";
+    title.textContent = attachmentTitle(task);
+    const available = !!taskAttachment(task.attachmentID);
+    title.disabled = !available;
+    if (available) {
+      title.title = getString("pref-task-open");
+      title.addEventListener("click", () => {
+        void openTaskAttachment(win, task.attachmentID);
+      });
+    }
+    const meta = win.document.createElementNS(XHTML_NS, "div");
+    meta.className = "sl-task-meta";
+    meta.textContent = `${taskStateLabel(task.state)} · ${taskProgressLabel(task)}`;
+    details.append(title, meta);
+
+    const actions = win.document.createElementNS(XHTML_NS, "div");
+    actions.className = "sl-task-actions";
+    if (task.active) {
+      actions.appendChild(
+        taskButton(win, getString("pref-task-stop"), () => {
+          cancelActiveJob();
+          setCacheStatus(win, getString("pref-cache-stopping"));
+        }),
+      );
+    } else if (
+      task.state === "paused" ||
+      task.state === "failed" ||
+      task.state === "running"
+    ) {
+      actions.appendChild(
+        taskButton(win, getString("pref-task-resume"), () => {
+          void runTask(win, task.attachmentID);
+        }),
+      );
+    }
+    if (!task.active) {
+      actions.appendChild(
+        taskButton(win, getString("pref-task-restart"), () => {
+          void restartTask(win, task.attachmentID);
+        }),
+      );
+    }
+    actions.appendChild(
+      taskButton(
+        win,
+        getString("pref-task-delete"),
+        () => {
+          void deleteTaskCache(win, task.attachmentID);
+        },
+        task.active,
+      ),
+    );
+    row.append(details, actions);
+    list.appendChild(row);
+  }
+}
+
+const taskRefreshTimers = new WeakMap<Window, number>();
+
+function startTaskRefresh(win: Window): void {
+  if (taskRefreshTimers.has(win)) {
+    return;
+  }
+  const timer = win.setInterval(() => {
+    void refreshPreprocessTasks(win);
+  }, 1000);
+  taskRefreshTimers.set(win, timer);
+  win.addEventListener(
+    "unload",
+    () => {
+      win.clearInterval(timer);
+      taskRefreshTimers.delete(win);
+    },
+    { once: true },
+  );
+}
+
 const bound = new WeakSet<Window>();
 
 function bindEvents(win: Window): void {
@@ -1022,7 +1310,9 @@ function bindEvents(win: Window): void {
     if (!win.confirm(getString("pref-cache-clear-confirm"))) {
       return;
     }
-    void clearCache().then(() => refreshCacheStats(win));
+    void clearCache().then(() =>
+      Promise.all([refreshCacheStats(win), refreshPreprocessTasks(win)]),
+    );
   });
 }
 
@@ -1035,6 +1325,8 @@ export function registerPrefsScripts(win: Window): void {
   maybeAutoFetchModelOptions(win, "translation");
   maybeAutoFetchModelOptions(win, "preprocess");
   void refreshCacheStats(win);
+  void refreshPreprocessTasks(win);
+  startTaskRefresh(win);
   if (!bound.has(win)) {
     bound.add(win);
     bindEvents(win);

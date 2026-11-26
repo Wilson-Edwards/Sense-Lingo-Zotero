@@ -264,12 +264,12 @@ sentenceKey = sha1(normalizeText(sentence))
   包含关系 0.90 → 长公共前后缀 0.85。默认阈值 0.90，宁可多打一次 API 也不给错义项。
 - 数据库打不开、条目格式不对、EPUB 解析失败都只会让「这次没命中」，整条链路静默回落到 AI。
 
-**整本预翻译**（条目右键菜单或设置页按钮）把频次 ≥ 2 的单词按
-`preprocess/extract.ts` 切句抽词，再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词
+**整本预翻译**（条目右键菜单或设置页按钮）从 EPUB 的每个分节切句抽词；只出现一次的词、
+短句、标题、短章节、目录和前置页面也会进入候选集。候选词再按 `prefetchBatchSize` 分块，用 `[[n]]` 标记的批量提示词
 一次翻多条，逐块写入同一个库：
 
 ```text
-EPUB 分节 → splitSentences（与点击同源）→ 抽词/频次过滤/每词采样 ≤3 句
+EPUB 分节 → splitSentences（与点击同源）→ 抽词/按频次排序/每词采样 ≤3 句
           → chunkItems（条数 + 字符预算）
           → chatCompletion（非流式，max_tokens ≥ 120 × 条数）
           → parseBatchOutput 严格校验（索引 1..n、每块行数、音标行）

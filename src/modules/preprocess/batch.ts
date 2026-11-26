@@ -164,11 +164,21 @@ export function parseBatchOutput(
     const blockStart = markers[i].end;
     const blockEnd =
       i + 1 < markers.length ? markers[i + 1].index : text.length;
-    const lines = text
+    const rawLines = text
       .slice(blockStart, blockEnd)
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
+    // A model sometimes joins the three lines into one, which
+    // `normalizeWordTranslation` is exactly what repairs; the single-item path
+    // already relies on it, so the block is measured after the same
+    // normalization. The raw lines still win when they already match, which
+    // keeps a one-line template from being split by a phonetic label inside it.
+    const normalizedLines = normalizeWordTranslation(rawLines.join("\n"))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const lines = normalizedLines.length === expected ? normalizedLines : rawLines;
     // A trailing "Hope this helps." after the last block is commentary, not a
     // dropped item; a short block is always a failure.
     const blockLines =

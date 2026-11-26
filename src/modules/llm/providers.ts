@@ -118,14 +118,19 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     id: "commandcode",
     label: "Command Code",
     baseURL: "https://api.commandcode.ai/provider/v1",
-    // A fast multilingual model keeps translation latency low; the full
-    // `provider/model` catalogue is fetched from `GET /models`.
-    model: "deepseek/deepseek-v4-flash",
+    // The `-fast` alias is the non-reasoning variant: measured against the live
+    // gateway, `deepseek-v4-flash` spends 800-3300 characters on reasoning
+    // before the answer (~6.5 s, and an empty `content` once the budget runs
+    // out), while `deepseek-v4-flash-fast` answers in ~1.1 s with no reasoning
+    // tokens at all. `deepseek-v4.1-flash` and the plain `-flash` ids are
+    // reasoning models, so they are a poor default for translation.
+    model: "deepseek/deepseek-v4-flash-fast",
     // The shared catalogue also lists Claude ids that only answer on
     // `/messages`; keep the dropdown to what this client can call.
     requiredEndpoint: "/chat/completions",
     // The endpoint answers in OpenAI's chat-completions shape, but
-    // `reasoning: { enabled: false }` is accepted and then ignored, so the
+    // `reasoning: { enabled: false }` (and `reasoning.effort: "minimal"`) is
+    // accepted and then ignored — reasoning tokens stay identical — so the
     // "disable thinking" switch is left unsupported here.
   },
   custom: {

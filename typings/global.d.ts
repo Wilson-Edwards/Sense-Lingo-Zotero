@@ -60,8 +60,6 @@ declare namespace _ZoteroTypes {
       autoCacheOnMiss: boolean;
       prefetchConcurrency: number;
       prefetchBatchSize: number;
-      prefetchMinOccurrences: number;
-      prefetchMaxWords: number;
       prefetchMaxSentencesPerWord: number;
       prefetchDelayMs: number;
       prefetchOnOpen: boolean;

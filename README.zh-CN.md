@@ -102,7 +102,7 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 | `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
 | `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
 | `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
-| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash`     |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash-fast` |
 
 每个服务商的 Key / 地址 / 模型会**分别保存**，来回切换不会互相覆盖。
 用本地模型请选 `Custom`，把接口地址指向本地 OpenAI 兼容端点。

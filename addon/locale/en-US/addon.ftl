@@ -34,7 +34,7 @@ prefetch-need-context = Enable "include the containing sentence" first; otherwis
 prefetch-need-provider = The pre-translation provider is not configured: set its API key in settings, or switch it to follow the translation provider.
 prefetch-not-epub = Select an EPUB attachment.
 prefetch-no-text = Could not read this EPUB's text.
-prefetch-no-entries = No word passed the frequency threshold; lower "minimum occurrences" and retry.
+prefetch-no-entries = No word eligible for pre-translation was found in this EPUB.
 prefetch-no-db = The local cache database is unavailable; pre-translation was skipped.
 
 # Errors

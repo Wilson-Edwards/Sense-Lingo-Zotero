@@ -668,6 +668,39 @@ export async function readAttachmentState(
   }
 }
 
+/** All books which have a saved preprocessing state, newest first. */
+export async function listAttachmentStates(): Promise<AttachmentState[]> {
+  const db = await getCacheDb();
+  if (!db) {
+    return [];
+  }
+  try {
+    const rows = rowsOf(
+      await db.queryAsync(
+        `SELECT attachmentID, state, signature, textLength, total, done, failed,
+                expectedLines, updatedAt
+           FROM slAttachment
+          ORDER BY updatedAt DESC`,
+      ),
+    );
+    return rows.map((record) => ({
+      attachmentID: Number(record.attachmentID) || 0,
+      state: String(record.state ?? "idle") as AttachmentState["state"],
+      signature: String(record.signature ?? ""),
+      textLength: Number(record.textLength) || 0,
+      total: Number(record.total) || 0,
+      done: Number(record.done) || 0,
+      failed: Number(record.failed) || 0,
+      expectedLines:
+        record.expectedLines == null ? undefined : Number(record.expectedLines),
+      updatedAt: Number(record.updatedAt) || 0,
+    }));
+  } catch (e) {
+    warn("failed to list attachment states", e);
+    return [];
+  }
+}
+
 /**
  * A job cannot survive a Zotero shutdown; any row still marked `running` is
  * turned into `paused` so the next launch offers to resume it.

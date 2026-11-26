@@ -4,7 +4,17 @@
   margin: 0 0 6px 186px; } .sl-section h3 { font-size: 13px; margin: 6px 0 4px;
   } .sl-block-hint { color: #6b7280; font-size: 11px; margin: 4px 0 6px; }
   .sl-prompt { width: 100%; box-sizing: border-box; font: 12px/1.45
-  ui-monospace, SFMono-Regular, Menlo, monospace; }
+  ui-monospace, SFMono-Regular, Menlo, monospace; } .sl-task-list { display:
+  grid; gap: 6px; margin-top: 6px; } .sl-task-row { display: flex; align-items:
+  center; justify-content: space-between; gap: 12px; padding: 7px 8px; border:
+  1px solid #d1d5db; border-radius: 4px; } .sl-task-details { min-width: 0;
+  flex: 1 1 auto; } .sl-task-title { min-width: 0; } .sl-task-open { display:
+  block; overflow: hidden; max-width: 100%; padding: 0; border: 0; background:
+  transparent; color: inherit; font: inherit; font-weight: 600; text-align:
+  left; text-decoration: underline; text-underline-offset: 2px; text-overflow:
+  ellipsis; white-space: nowrap; cursor: pointer; } .sl-task-meta,
+  .sl-task-empty { color: #6b7280; font-size: 11px; margin-top: 2px; }
+  .sl-task-actions { display: flex; flex: 0 0 auto; gap: 5px; }
 </html:style>
 
 <linkset>
@@ -319,32 +329,8 @@
 
     <hbox align="center" class="sl-row">
       <html:label
-        for="sl-prefetchMinOccurrences"
-        data-l10n-id="pref-prefetch-min-occ"
-      ></html:label>
-      <html:input
-        type="number"
-        id="sl-prefetchMinOccurrences"
-        min="1"
-        step="1"
-        style="width: 80px"
-      />
-      <html:label
-        for="sl-prefetchMaxWords"
-        data-l10n-id="pref-prefetch-max-words"
-        style="margin-left: 16px; min-width: 90px"
-      ></html:label>
-      <html:input
-        type="number"
-        id="sl-prefetchMaxWords"
-        min="1"
-        step="100"
-        style="width: 90px"
-      />
-      <html:label
         for="sl-prefetchMaxSentencesPerWord"
         data-l10n-id="pref-prefetch-sentences"
-        style="margin-left: 16px; min-width: 90px"
       ></html:label>
       <html:input
         type="number"
@@ -369,6 +355,13 @@
       class="sl-hint"
       style="margin-left: 0"
     ></html:div>
+
+    <label><html:h4 data-l10n-id="pref-head-preprocess-tasks"></html:h4></label>
+    <html:div
+      class="sl-block-hint"
+      data-l10n-id="pref-preprocess-tasks-hint"
+    ></html:div>
+    <html:div id="sl-preprocessTasks" class="sl-task-list"></html:div>
   </vbox>
 
   <vbox class="sl-section">

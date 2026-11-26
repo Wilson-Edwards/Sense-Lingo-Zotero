@@ -60,7 +60,7 @@ cp .env.example .env
 | `sentenceSplit.test.ts`       | 9    | 切句边界与空白折叠                                                      |
 | `prompt.test.ts`              | 46   | 模板库解析与迁移、增删改/复制、路由与回退、默认模板判定、变量渲染       |
 | `batchPrompt.test.ts`         | 17   | 批量提示词拼装、`[[n]]` 解析与行数校验                                  |
-| `preprocessExtract.test.ts`   | 8    | EPUB 抽词、频次过滤、每词句子采样                                       |
+| `preprocessExtract.test.ts`   | 8    | EPUB 抽词、单次词/短分节/完整词表保留、每词句子采样                     |
 | `selectionKind.test.ts`       | 19   | 1/3/4 词边界、标点、缩写、跨行、中英混排、纯数字、强制模式              |
 | `chatCompletion.test.ts`      | 16   | 请求构造、地址归一、响应解析、错误归一、服务商预设                      |
 | `chatStream.test.ts`          | 14   | SSE 增量解析、跨包拼接、`[DONE]`、JSON 回退、流内错误、不可读 body 降级 |

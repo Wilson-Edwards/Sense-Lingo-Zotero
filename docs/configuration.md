@@ -69,7 +69,7 @@
 | `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
 | `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
 | `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
-| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash`     |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash-fast` |
 | `custom`      | 用户填写                                 | 用户填写                         |
 
 - `apiKey` 是必填项，`custom` 也不例外。
@@ -81,7 +81,9 @@
   `choices[0].message.content` 结构；模型名为 `cline-pass/...` 形式。
 - `commandcode` 使用 Command Code 的 Provider 接口
   （`POST https://api.commandcode.ai/provider/v1/chat/completions`，`Authorization: Bearer <key>`），
-  模型名为 `provider/model` 形式，默认 `deepseek/deepseek-v4-flash`。
+  模型名为 `provider/model` 形式，默认 `deepseek/deepseek-v4-flash-fast`（不思考的快速变体，
+  单次请求约 1.1 s；同目录下的 `deepseek-v4-flash`、`deepseek-v4.1-flash` 是推理模型，
+  会先花 800–3300 个字符思考，延迟 4–7 s）。
   `GET /provider/v1/models` 返回该 Key 可用的模型目录（含 `supported_endpoints`），
   不需要内置清单；插件会按目录声明的端点筛掉只能走 `/provider/v1/messages` 的
   `claude-*` 模型（实测在 chat 接口上回 `unsupported_model`），其余 id 原样填入下拉。

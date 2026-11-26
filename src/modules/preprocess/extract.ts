@@ -18,18 +18,10 @@ export interface PreprocessSection {
 export interface ExtractOptions {
   /** Same cap as the click path, so both cut a long sentence identically. */
   maxSentenceChars: number;
-  /** Keep only words that occur at least this many times. */
-  minOccurrences: number;
-  /** Upper bound of the vocabulary, highest frequency first. */
-  maxWords: number;
   /** Representative sentences stored per word. */
   maxSentencesPerWord: number;
   /** Drop compounds such as `well-known`. */
   skipHyphenated?: boolean;
-  /** Ignore sections shorter than this (cover, copyright, colophon). */
-  minSectionChars?: number;
-  /** Ignore navigation / table-of-contents / cover documents. */
-  skipFrontMatter?: boolean;
 }
 
 export interface ExtractedItem {
@@ -175,9 +167,6 @@ const STOPWORDS = new Set([
   "yourselves",
 ]);
 
-const FRONT_MATTER_RE =
-  /(?:^|[/_.-])(nav|toc|cover|title-?page|colophon|copyright)(?:[/_.-]|$)/i;
-
 interface SentenceStat {
   sentence: string;
   /** Occurrences of the word inside this sentence. */
@@ -194,18 +183,6 @@ interface WordStat {
 
 /** Characters that mean "this token is part of a URL or an address". */
 const URL_NEIGHBOURS = new Set(["/", ":", "@", "#", "\\", "?"]);
-
-function isUsefulSentence(sentence: string): boolean {
-  const trimmed = sentence.trim();
-  if (trimmed.length < 12) {
-    return false;
-  }
-  if (!/\p{L}/u.test(trimmed)) {
-    return false;
-  }
-  // Page numbers, figure numbers, footnote markers.
-  return !/^\s*[\d.,]+\s*$/.test(trimmed);
-}
 
 function isUsefulToken(
   token: string,
@@ -234,32 +211,22 @@ function isUsefulToken(
 /**
  * Walk every section, split it into sentences, and collect word statistics.
  *
- * Occurrences are counted across the whole book so the frequency filter sees
- * one number per word; sentences are tracked per word so a few representative
- * senses can be sampled later.
+ * Occurrences are counted across the whole book so the vocabulary has a stable
+ * frequency order; sentences are tracked per word so a few representative
+ * senses can be sampled later. A total of one remains eligible.
  */
 export function extractCandidates(
   sections: readonly PreprocessSection[],
   options: ExtractOptions,
 ): ExtractedItem[] {
-  const minSectionChars = options.minSectionChars ?? 0;
   const skipHyphenated = options.skipHyphenated ?? true;
   const stats = new Map<string, WordStat>();
   let sentenceOrder = 0;
 
   for (const section of sections) {
-    if (options.skipFrontMatter && FRONT_MATTER_RE.test(section.href ?? "")) {
-      continue;
-    }
     const text = section.text ?? "";
-    if (text.length < minSectionChars) {
-      continue;
-    }
     for (const sentence of splitSentences(text, options.maxSentenceChars)) {
       sentenceOrder += 1;
-      if (!isUsefulSentence(sentence)) {
-        continue;
-      }
       TOKEN_RE.lastIndex = 0;
       // Hash the sentence once: the token loop below can run hundreds of times.
       const keyForSentence = sentenceKey(sentence);
@@ -298,10 +265,9 @@ export function extractCandidates(
     }
   }
 
-  const kept = [...stats.values()]
-    .filter((stat) => stat.total >= options.minOccurrences)
-    .sort((a, b) => b.total - a.total || a.firstSeen - b.firstSeen)
-    .slice(0, Math.max(1, options.maxWords));
+  const kept = [...stats.values()].sort(
+    (a, b) => b.total - a.total || a.firstSeen - b.firstSeen,
+  );
 
   const items: ExtractedItem[] = [];
   for (const stat of kept) {

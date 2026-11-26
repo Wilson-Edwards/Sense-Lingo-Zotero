@@ -39,6 +39,21 @@ import { extractCandidates, type PreprocessSection } from "./extract";
 
 /** Rough character budget per request, after the item-count limit. */
 const BATCH_MAX_CHARS = 6000;
+/**
+ * Completion budget per batch item.
+ *
+ * On a gateway that always reasons (Command Code answers `reasoning: {enabled:
+ * false}` with the same amount of thinking), the thinking phase is billed
+ * against `max_tokens` first: measured on `deepseek/deepseek-v4.1-flash`, one
+ * three-line item costs 300-500 tokens, so 120 per item spends the whole budget
+ * on reasoning and the answer arrives empty.
+ */
+const BATCH_TOKENS_PER_ITEM = 400;
+/** Floor for one request; a reasoning word prompt regularly needs more than 1k. */
+const MIN_REQUEST_TOKENS = 2048;
+/** A batch of reasoning answers outlives the click-translation timeout. */
+const BATCH_TIMEOUT_BASE_MS = 20_000;
+const BATCH_TIMEOUT_PER_ITEM_MS = 3_000;
 const WRITE_SAVE_WINDOW_MS = 1000;
 const MAX_REQUEST_ATTEMPTS = 3;
 /** Stop instead of burning tokens on a provider that keeps failing per item. */
@@ -58,10 +73,22 @@ export interface PreprocessOptions {
   confirm?: boolean;
 }
 
+/** A safe, read-only snapshot for task-management UI. */
+export interface ActivePreprocessProgress {
+  attachmentID: number;
+  total: number;
+  done: number;
+  failed: number;
+}
+
 let activeJob: PreprocessJob | null = null;
 
 export function isJobRunning(): boolean {
   return activeJob !== null;
+}
+
+export function getActiveJobProgress(): ActivePreprocessProgress | null {
+  return activeJob?.progressSnapshot() ?? null;
 }
 
 export function cancelActiveJob(): void {
@@ -126,6 +153,15 @@ class PreprocessJob {
 
   cancel(): void {
     this.cancelled = true;
+  }
+
+  progressSnapshot(): ActivePreprocessProgress {
+    return {
+      attachmentID: this.attachmentItemID,
+      total: this.total,
+      done: this.doneCount,
+      failed: this.failedCount,
+    };
   }
 
   async run(): Promise<void> {
@@ -273,11 +309,7 @@ class PreprocessJob {
     }
     const candidates = extractCandidates(sections, {
       maxSentenceChars: settings.maxSentenceChars,
-      minOccurrences: getNumberPref("prefetchMinOccurrences", 2),
-      maxWords: getNumberPref("prefetchMaxWords", 10000),
       maxSentencesPerWord: getNumberPref("prefetchMaxSentencesPerWord", 3),
-      skipFrontMatter: true,
-      minSectionChars: 200,
     });
     return candidates.map((candidate) => ({
       word: candidate.word,
@@ -467,21 +499,28 @@ class PreprocessJob {
    * Run one request with backoff.
    *
    * Rate limits, 5xx, network timeouts and empty completions are worth a retry;
-   * auth failures and bad requests are not. The final attempt allows the
-   * model's reasoning phase, which recovers the "empty response content" case
-   * some gateways produce for reasoning models with thinking disabled.
+   * auth failures and bad requests are not. The budget doubles on every attempt:
+   * an empty answer is usually the reasoning phase spending the whole
+   * `max_tokens` before the first output token, and dropping the no-thinking
+   * hint (the last attempt does that too) changes nothing on gateways that
+   * ignore the field.
    */
   private async requestWithRetry(
     maxTokens: number,
     messages: Parameters<typeof chatCompletion>[0]["messages"],
+    timeoutMs?: number,
   ) {
     const attempts = MAX_REQUEST_ATTEMPTS;
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
         return await chatCompletion({
-          config: this.providerConfig(maxTokens, attempt === attempts),
+          config: this.providerConfig(
+            maxTokens * 2 ** (attempt - 1),
+            attempt === attempts,
+          ),
           messages,
+          timeoutMs,
         });
       } catch (e) {
         lastError = e;
@@ -501,7 +540,7 @@ class PreprocessJob {
 
   /** One single-item request; used for probes and for the fallback path. */
   private async requestSingle(item: JobItem): Promise<string> {
-    const response = await this.requestWithRetry(1024, [
+    const response = await this.requestWithRetry(MIN_REQUEST_TOKENS, [
       { role: "system", content: this.systemTemplate },
       { role: "user", content: item.userPrompt },
     ]);
@@ -518,7 +557,7 @@ class PreprocessJob {
     items: readonly JobItem[],
   ): Promise<string[] | null> {
     const response = await this.requestWithRetry(
-      Math.max(1024, 120 * items.length),
+      Math.max(MIN_REQUEST_TOKENS, BATCH_TOKENS_PER_ITEM * items.length),
       [
         {
           role: "system",
@@ -529,9 +568,16 @@ class PreprocessJob {
           content: buildBatchUser(items.map((item) => item.userPrompt)),
         },
       ],
+      this.batchTimeout(items.length),
     );
     await this.delay();
     return parseBatchOutput(response.content, items.length, this.expectedLines);
+  }
+
+  /** A batch of `count` reasoning answers is slower than one click request. */
+  private batchTimeout(count: number): number {
+    const base = this.settings?.prefetchProvider.timeoutMs ?? 30_000;
+    return Math.max(base, BATCH_TIMEOUT_BASE_MS + BATCH_TIMEOUT_PER_ITEM_MS * count);
   }
 
   // --------------------------------------------------------------------- chunks
@@ -647,6 +693,20 @@ class PreprocessJob {
       written = await putEntries(rows);
       this.doneCount += written;
       this.failedCount += rows.length - written;
+      // Keep the durable task list useful after an interrupted run as well as
+      // while it is open in Preferences. This shares the existing serialised
+      // SQLite write queue with cache rows, so state cannot outrun the data.
+      await saveAttachmentState({
+        attachmentID: this.attachmentItemID,
+        state: "running",
+        signature: this.signature,
+        textLength: this.bookChars,
+        total: this.total,
+        done: this.doneCount,
+        failed: this.failedCount,
+        expectedLines: this.expectedLines || undefined,
+        updatedAt: Date.now(),
+      });
     });
     if (written > 0) {
       this.consecutiveFailures = 0;

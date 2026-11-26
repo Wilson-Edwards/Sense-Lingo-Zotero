@@ -81,7 +81,7 @@ describe("commandcode preset", () => {
   it("uses the Command Code API base URL and a model from its catalogue", () => {
     const resolved = resolveProviderConfig({ provider: "commandcode" });
     expect(resolved.baseURL).toBe("https://api.commandcode.ai/provider/v1");
-    expect(resolved.model).toBe("deepseek/deepseek-v4-flash");
+    expect(resolved.model).toBe("deepseek/deepseek-v4-flash-fast");
     // The gateway lists its whole catalogue at `/models`; ids need no prefix
     // and nothing is baked in.
     expect(resolved.modelsPath).toBe("/models");
