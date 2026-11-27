@@ -248,8 +248,6 @@ class PreprocessJob {
       this.systemTemplate,
       this.userTemplate,
       this.targetLang,
-      settings.sourceLang,
-      getItemTitle(this.attachmentItemID),
     );
     this.batchEnabled =
       getNumberPref("prefetchBatchSize", 12) > 1 &&

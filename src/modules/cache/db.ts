@@ -509,12 +509,17 @@ export interface EntryScope {
   targetLang: string;
 }
 
-export interface EntryQuery extends EntryScope {
+export interface EntryQuery {
+  attachmentID: number;
   wordKey: string;
 }
 
 /**
- * Candidates for one live selection, newest first.
+ * Candidates for one live word, newest first.
+ *
+ * Prompt templates and target language are deliberately not part of click-time
+ * lookup. The live sentence decides whether a row is reusable; the refresh
+ * action is the explicit way to ask the provider for a replacement.
  *
  * Rows are copied into plain objects: Zotero returns proxied storage rows, and
  * spreading one (as the scoring code does) does not enumerate its columns.
@@ -536,10 +541,9 @@ export async function queryEntries(
         `SELECT wordKey, word, sentenceKey, sentence, translation, model,
                 source, createdAt, updatedAt
            FROM ${table}
-          WHERE wordKey = ? AND targetLang = ? AND promptHash = ?
-          ORDER BY updatedAt DESC
-          LIMIT 50`,
-        [query.wordKey, query.targetLang, query.promptHash],
+          WHERE wordKey = ?
+          ORDER BY updatedAt DESC`,
+        [query.wordKey],
       ),
     );
     return rows.map((row) => ({

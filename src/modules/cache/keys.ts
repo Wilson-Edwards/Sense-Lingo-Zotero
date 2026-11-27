@@ -13,10 +13,6 @@
 
 import { normalizeText } from "../reader/sentence";
 
-/** Bump whenever prompt rendering or output normalization changes. */
-export const CACHE_SIGNATURE_VERSION = "sense-lingo-cache-v2";
-export const WORD_OUTPUT_FORMAT_VERSION = "word-lines-v1";
-
 /**
  * NFC, lower-case, and punctuation trimmed from both ends.
  * `Thoreau` -> `thoreau`, `"proposed",` -> `proposed`.
@@ -50,22 +46,9 @@ export function promptHash(
   systemTemplate: string,
   userTemplate: string,
   targetLang: string,
-  sourceLang = "auto",
-  itemTitle = "",
 ): string {
-  const templates = `${systemTemplate ?? ""}\u0000${userTemplate ?? ""}`;
-  // A book title only affects the output when a template actually consumes it.
-  const titleVariableUsed = /\{\s*itemTitle\s*\}/u.test(templates);
   return sha1Hex(
-    [
-      CACHE_SIGNATURE_VERSION,
-      WORD_OUTPUT_FORMAT_VERSION,
-      systemTemplate ?? "",
-      userTemplate ?? "",
-      targetLang ?? "",
-      sourceLang ?? "auto",
-      titleVariableUsed ? (itemTitle ?? "") : "",
-    ].join("\u0000"),
+    `${systemTemplate ?? ""}\u0000${userTemplate ?? ""}\u0000${targetLang ?? ""}`,
   );
 }
 

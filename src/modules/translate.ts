@@ -353,27 +353,23 @@ export async function translate(
           profileForCache.system,
           profileForCache.user,
           settings.targetLang,
-          settings.sourceLang,
-          itemTitle,
         )
       : "";
-  const cacheEligible =
+  const cacheReadEligible =
     kind === "word" &&
     settings.cacheEnabled &&
     !input.userPromptOverride &&
     !!input.attachmentItemID &&
     !/\s/.test(text) &&
-    !!cacheSentence &&
-    !!cacheSignature;
-  const cacheReadAllowed = cacheEligible && !input.skipCache;
+    !!cacheSentence;
+  const cacheWriteEligible = cacheReadEligible && !!cacheSignature;
+  const cacheReadAllowed = cacheReadEligible && !input.skipCache;
 
   if (cacheReadAllowed && input.attachmentItemID) {
     const hit = await lookupWord({
       attachmentID: input.attachmentItemID,
       word: text,
       sentence: cacheSentence,
-      promptHash: cacheSignature,
-      targetLang: settings.targetLang,
       strict: settings.cacheStrictSentence,
       singleCandidateFallback: settings.cacheSingleCandidateFallback,
     });
@@ -422,7 +418,7 @@ export async function translate(
   // the same sentence is instant. Fire-and-forget: a failed write must never
   // affect the answer already on screen.
   if (
-    cacheEligible &&
+    cacheWriteEligible &&
     (settings.autoCacheOnMiss || input.forceCacheWrite) &&
     input.attachmentItemID
   ) {

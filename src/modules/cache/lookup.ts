@@ -162,8 +162,6 @@ export interface LookupInput {
   attachmentID: number;
   word: string;
   sentence: string;
-  promptHash: string;
-  targetLang: string;
   strict: boolean;
   singleCandidateFallback: boolean;
 }
@@ -182,8 +180,6 @@ export async function lookupWord(
   const rows = await queryEntries({
     attachmentID: input.attachmentID,
     wordKey: wordKey(input.word),
-    promptHash: input.promptHash,
-    targetLang: input.targetLang,
   });
   return pickBestCandidate(rows, input.sentence, {
     strict: input.strict,

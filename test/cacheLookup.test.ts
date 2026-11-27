@@ -84,6 +84,29 @@ describe("pickBestCandidate", () => {
     expect(hit?.score).toBe(1);
   });
 
+  it("uses the newest row when several configurations cached the same sentence", () => {
+    const sentenceKeyValue = sentenceKey(live);
+    const hit = pickBestCandidate(
+      [
+        row({
+          sentence: live,
+          sentenceKey: sentenceKeyValue,
+          translation: "刷新后的译文",
+          updatedAt: 20,
+        }),
+        row({
+          sentence: live,
+          sentenceKey: sentenceKeyValue,
+          translation: "旧译文",
+          updatedAt: 10,
+        }),
+      ],
+      live,
+      STRICT,
+    );
+    expect(hit?.translation).toBe("刷新后的译文");
+  });
+
   it("picks the highest score", () => {
     const hit: Candidate | null = pickBestCandidate(
       [
