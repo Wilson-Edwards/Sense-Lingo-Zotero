@@ -41,6 +41,10 @@ type Connection = _ZoteroTypes.DB;
 
 /** `undefined` = not tried yet, `null` = tried and unavailable. */
 let conn: Connection | null | undefined;
+/** Concurrent callers share one open/migration attempt. */
+let opening: Promise<Connection | null> | undefined;
+/** Once shutdown starts, late async work must not reopen the database. */
+let shuttingDown = false;
 
 /**
  * Global tables. The translation tables are created on demand by `entryTable`.
@@ -224,9 +228,22 @@ async function dropEntryTable(db: Connection, table: string): Promise<void> {
  * Returns `null` when SQLite is unavailable or migration failed.
  */
 export async function getCacheDb(): Promise<Connection | null> {
+  if (shuttingDown) {
+    return null;
+  }
   if (conn !== undefined) {
     return conn;
   }
+  if (!opening) {
+    opening = openCacheDb().finally(() => {
+      opening = undefined;
+    });
+  }
+  return opening;
+}
+
+/** Perform the single shared open/migration attempt for `getCacheDb`. */
+async function openCacheDb(): Promise<Connection | null> {
   let db: Connection | undefined;
   try {
     if (
@@ -259,7 +276,7 @@ export async function getCacheDb(): Promise<Connection | null> {
     conn = null;
     if (db) {
       try {
-        await db.closeDatabase(false);
+        await db.closeDatabase(true);
       } catch (closeError) {
         warn("failed to close unusable cache db", closeError);
       }
@@ -344,15 +361,21 @@ async function splitLegacyEntryTable(db: Connection): Promise<void> {
 
 /** Close the connection (called from `hooks.onShutdown`). */
 export async function closeCacheDb(): Promise<void> {
-  const db = conn;
-  conn = undefined;
+  // Flip this before waiting for an in-flight open so no new caller can start
+  // another connection while shutdown is under way.
+  shuttingDown = true;
+  const db = opening ? await opening : conn;
+  conn = null;
   knownTables.clear();
   absentTables.clear();
   if (!db) {
     return;
   }
   try {
-    await db.closeDatabase(false);
+    // A non-permanent close lets any stale DB reference transparently reopen
+    // itself. At shutdown that would recreate the exact resource we just
+    // released, so make the close permanent.
+    await db.closeDatabase(true);
   } catch (e) {
     warn("failed to close cache db", e);
   }
@@ -361,6 +384,8 @@ export async function closeCacheDb(): Promise<void> {
 /** Test seam: forget the cached connection state. */
 export function resetCacheDb(): void {
   conn = undefined;
+  opening = undefined;
+  shuttingDown = false;
   knownTables.clear();
   absentTables.clear();
 }

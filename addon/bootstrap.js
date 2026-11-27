@@ -44,11 +44,16 @@ async function onMainWindowUnload({ window }, reason) {
 }
 
 async function shutdown({ id, version, resourceURI, rootURI }, reason) {
+  // `APP_SHUTDOWN` still has to close plugin-owned resources. In particular,
+  // Gecko does not manage the external SQLite connection created by the
+  // plugin, and leaving it open can keep Zotero waiting during application
+  // shutdown. Chrome teardown is unnecessary at that point, but the plugin
+  // hook is not.
+  await Zotero.__addonInstance__?.hooks.onShutdown();
+
   if (reason === APP_SHUTDOWN) {
     return;
   }
-
-  await Zotero.__addonInstance__?.hooks.onShutdown();
 
   if (chromeHandle) {
     chromeHandle.destruct();
