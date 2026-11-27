@@ -226,6 +226,24 @@ describe("chatCompletion", () => {
     ).rejects.toMatchObject({ code: "TIMEOUT" });
   });
 
+  it("distinguishes caller cancellation from a timeout", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn(async () => {
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      throw err;
+    });
+    await expect(
+      chatCompletion({
+        messages,
+        config,
+        signal: controller.signal,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }),
+    ).rejects.toMatchObject({ code: "ABORTED" });
+  });
+
   it("refuses to run without an API key", async () => {
     const fetchImpl = vi.fn();
     await expect(

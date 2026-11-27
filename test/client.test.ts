@@ -5,6 +5,8 @@ import {
   buildChatEndpoint,
   normalizeBaseURL,
   parseChatCompletion,
+  parseRetryAfter,
+  redactCredential,
   parseStreamChunk,
 } from "../src/modules/llm/client";
 
@@ -23,6 +25,28 @@ describe("normalizeBaseURL", () => {
 
   it("strips trailing slashes", () => {
     expect(normalizeBaseURL("https://x.dev/v1///")).toBe("https://x.dev/v1");
+  });
+});
+
+describe("parseRetryAfter", () => {
+  it("reads seconds and HTTP dates", () => {
+    expect(parseRetryAfter("2", 0)).toBe(2000);
+    expect(parseRetryAfter("Thu, 01 Jan 1970 00:00:03 GMT", 1000)).toBe(2000);
+  });
+
+  it("ignores invalid values", () => {
+    expect(parseRetryAfter("later")).toBeUndefined();
+  });
+});
+
+describe("redactCredential", () => {
+  it("removes raw keys and bearer credentials", () => {
+    expect(
+      redactCredential(
+        "key sk-secret; Authorization: Bearer abc.def",
+        "sk-secret",
+      ),
+    ).toBe("key [REDACTED]; Authorization: Bearer [REDACTED]");
   });
 });
 

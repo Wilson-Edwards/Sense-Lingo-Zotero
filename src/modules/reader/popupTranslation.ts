@@ -13,6 +13,7 @@ import type { InlineTranslation } from "../controller";
 
 /** Reuse a successful result when the popup re-renders for the same text. */
 export const POPUP_RESULT_TTL_MS = 60_000;
+export const POPUP_RESULT_MAX_ENTRIES = 20;
 
 interface PopupTranslationEntry {
   text: string;
@@ -20,7 +21,34 @@ interface PopupTranslationEntry {
   at: number;
 }
 
-const entries = new WeakMap<Document, PopupTranslationEntry>();
+const entries = new WeakMap<Document, Map<string, PopupTranslationEntry>>();
+
+function entriesFor(doc: Document): Map<string, PopupTranslationEntry> {
+  let map = entries.get(doc);
+  if (!map) {
+    map = new Map();
+    entries.set(doc, map);
+  }
+  return map;
+}
+
+function pruneEntries(
+  map: Map<string, PopupTranslationEntry>,
+  now: number,
+): void {
+  for (const [key, entry] of map) {
+    if (now - entry.at >= POPUP_RESULT_TTL_MS) {
+      map.delete(key);
+    }
+  }
+  while (map.size > POPUP_RESULT_MAX_ENTRIES) {
+    const oldest = map.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    map.delete(oldest);
+  }
+}
 
 /**
  * Run (or reuse) the translation for `text` in `doc`.
@@ -60,14 +88,19 @@ function storePopupTranslation(
   request: () => Promise<InlineTranslation>,
   now: number,
 ): Promise<InlineTranslation> {
+  const map = entriesFor(doc);
+  pruneEntries(map, now);
   const promise = request().then((result) => {
     // Failures are not worth reusing: a later popup should retry.
-    if (!result.ok && entries.get(doc)?.promise === promise) {
-      entries.delete(doc);
+    if (!result.ok && map.get(text)?.promise === promise) {
+      map.delete(text);
     }
     return result;
   });
-  entries.set(doc, { text, promise, at: now });
+  // Reinsert to make Map order an LRU order for the entry cap.
+  map.delete(text);
+  map.set(text, { text, promise, at: now });
+  pruneEntries(map, now);
   return promise;
 }
 
@@ -80,13 +113,15 @@ export function peekPopupTranslation(
   text: string,
   now: number = Date.now(),
 ): Promise<InlineTranslation> | undefined {
-  const cached = entries.get(doc);
-  if (
-    !cached ||
-    cached.text !== text ||
-    now - cached.at >= POPUP_RESULT_TTL_MS
-  ) {
+  const map = entries.get(doc);
+  const cached = map?.get(text);
+  if (!cached || now - cached.at >= POPUP_RESULT_TTL_MS) {
+    if (cached) {
+      map?.delete(text);
+    }
     return undefined;
   }
+  map?.delete(text);
+  map?.set(text, cached);
   return cached.promise;
 }

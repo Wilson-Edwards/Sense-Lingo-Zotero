@@ -73,4 +73,21 @@ describe("promptHash", () => {
       promptHash(system, user, "ja"),
     );
   });
+
+  it("changes with the source language", () => {
+    expect(promptHash(system, user, "en", "fr")).not.toBe(
+      promptHash(system, user, "en", "de"),
+    );
+  });
+
+  it("only includes the title when the template uses it", () => {
+    expect(promptHash(system, user, "zh-CN", "en", "Book A")).toBe(
+      promptHash(system, user, "zh-CN", "en", "Book B"),
+    );
+    expect(
+      promptHash(system, `${user}\nBook: {itemTitle}`, "zh-CN", "en", "A"),
+    ).not.toBe(
+      promptHash(system, `${user}\nBook: {itemTitle}`, "zh-CN", "en", "B"),
+    );
+  });
 });

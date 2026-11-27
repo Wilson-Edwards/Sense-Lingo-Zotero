@@ -20,16 +20,52 @@ interface StreamState {
   /** Translation assembled so far; replayed into a re-rendered popup. */
   partial: string;
   slots: Set<HTMLDivElement>;
+  updatedAt: number;
+  cleanupTimer?: ReturnType<typeof setTimeout>;
 }
 
 const states = new WeakMap<Document, Map<string, StreamState>>();
+const lifecycleAttached = new WeakSet<Document>();
+export const POPUP_STREAM_TTL_MS = 60_000;
+export const POPUP_STREAM_MAX_ENTRIES = 20;
+
+function prune(map: Map<string, StreamState>, now = Date.now()): void {
+  for (const [key, state] of map) {
+    if (now - state.updatedAt >= POPUP_STREAM_TTL_MS) {
+      if (state.cleanupTimer) {
+        clearTimeout(state.cleanupTimer);
+      }
+      map.delete(key);
+    }
+  }
+  while (map.size > POPUP_STREAM_MAX_ENTRIES) {
+    const oldest = map.keys().next().value as string | undefined;
+    if (oldest === undefined) {
+      break;
+    }
+    const state = map.get(oldest);
+    if (state?.cleanupTimer) {
+      clearTimeout(state.cleanupTimer);
+    }
+    map.delete(oldest);
+  }
+}
 
 function byKey(doc: Document): Map<string, StreamState> {
   let map = states.get(doc);
   if (!map) {
     map = new Map();
     states.set(doc, map);
+    if (!lifecycleAttached.has(doc)) {
+      lifecycleAttached.add(doc);
+      doc.defaultView?.addEventListener(
+        "pagehide",
+        () => clearDocumentStreamState(doc),
+        { once: true },
+      );
+    }
   }
+  prune(map);
   return map;
 }
 
@@ -37,9 +73,13 @@ function stateFor(doc: Document, key: string): StreamState {
   const map = byKey(doc);
   let state = map.get(key);
   if (!state) {
-    state = { partial: "", slots: new Set() };
+    state = { partial: "", slots: new Set(), updatedAt: Date.now() };
     map.set(key, state);
   }
+  state.updatedAt = Date.now();
+  map.delete(key);
+  map.set(key, state);
+  prune(map);
   return state;
 }
 
@@ -77,6 +117,39 @@ export function clearPartial(doc: Document, key: string): void {
   if (state) {
     state.partial = "";
   }
+}
+
+/** Keep a completed result briefly for popup re-renders, then release it. */
+export function finishStream(doc: Document, key: string): void {
+  const state = states.get(doc)?.get(key);
+  if (!state) {
+    return;
+  }
+  if (state.cleanupTimer) {
+    clearTimeout(state.cleanupTimer);
+  }
+  state.updatedAt = Date.now();
+  state.cleanupTimer = setTimeout(() => {
+    const map = states.get(doc);
+    if (map?.get(key) === state) {
+      map.delete(key);
+    }
+  }, POPUP_STREAM_TTL_MS);
+}
+
+/** Release every slot/partial when its reader document is destroyed. */
+export function clearDocumentStreamState(doc: Document): void {
+  const map = states.get(doc);
+  if (map) {
+    for (const state of map.values()) {
+      if (state.cleanupTimer) {
+        clearTimeout(state.cleanupTimer);
+      }
+      state.slots.clear();
+    }
+  }
+  states.delete(doc);
+  lifecycleAttached.delete(doc);
 }
 
 /**

@@ -9,14 +9,22 @@
 
 import { getString } from "../../utils/locale";
 import { warn } from "../../utils/logger";
-import { getNumberPref, getPref, setPref, setPrefRaw } from "../../utils/prefs";
+import {
+  NUMERIC_PREF_SCHEMA,
+  getNumberPref,
+  getPref,
+  normalizeNumberPref,
+  setPref,
+  setPrefRaw,
+  type NumericPrefKey,
+} from "../../utils/prefs";
 import {
   clearCache,
   getCacheStats,
   listAttachmentStates,
   type AttachmentState,
 } from "../cache/db";
-import { fetchModelIds } from "../llm/client";
+import { chatCompletion, fetchModelIds } from "../llm/client";
 import {
   EMPTY_PROVIDER_CREDENTIALS,
   PROVIDER_IDS,
@@ -41,6 +49,7 @@ import {
   addProfile,
   defaultNameFor,
   defaultSystemFor,
+  defaultUserFor,
   isBuiltinProfileId,
   isDefaultProfiles,
   parseProfiles,
@@ -53,11 +62,15 @@ import {
 } from "../llm/prompt";
 import type { SelectionKind } from "../reader/selectionKind";
 import { normalizePopupFontSize } from "../reader/popupFontSize";
+import { collectReaderDocuments } from "../reader/readerText";
+import { renderPrompt } from "../llm/render";
+import { canBatch } from "../preprocess/batch";
 import {
   cancelActiveJob,
   getActiveJobProgress,
   isJobRunning,
   startPreprocess,
+  subscribePreprocessProgress,
 } from "../preprocess/job";
 import { normalizePreprocessLanguageFilter } from "../preprocess/extract";
 import { isEpubAttachment } from "../preprocess/menu";
@@ -91,6 +104,31 @@ const NUMBER_KEYS = [
   "prefetchMaxSentencesPerWord",
   "prefetchDelayMs",
 ] as const satisfies readonly PrefKey[];
+
+const LANGUAGE_CHOICES = [
+  ["auto", "Auto"],
+  ["zh-CN", "简体中文"],
+  ["zh-TW", "繁體中文"],
+  ["en", "English"],
+  ["ja", "日本語"],
+  ["ko", "한국어"],
+  ["fr", "Français"],
+  ["de", "Deutsch"],
+  ["es", "Español"],
+  ["ru", "Русский"],
+] as const;
+
+const PROMPT_VARIABLES = [
+  "text",
+  "word",
+  "sentence",
+  "prevSentence",
+  "nextSentence",
+  "sourceLang",
+  "targetLang",
+  "selectionType",
+  "itemTitle",
+] as const;
 
 const BOOL_KEYS = [
   "useContext",
@@ -202,6 +240,49 @@ function addOption(
   select.appendChild(option);
 }
 
+function setActiveTab(win: Window, tab: string): void {
+  for (const panel of Array.from(
+    win.document.querySelectorAll<HTMLElement>("[data-sl-tab-panel]"),
+  )) {
+    panel.hidden = panel.dataset.slTabPanel !== tab;
+  }
+  for (const button of Array.from(
+    win.document.querySelectorAll<HTMLButtonElement>("[data-sl-tab]"),
+  )) {
+    const active = button.dataset.slTab === tab;
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+}
+
+/** Move runtime knobs out of the everyday behaviour/provider forms. */
+function organizePanels(win: Window): void {
+  const advanced = byId<HTMLElement>(win, "advancedRuntime");
+  if (advanced && advanced.childElementCount === 1) {
+    for (const id of [
+      "advanced-request-row",
+      "advanced-thinking-row",
+      "thinking-hint",
+      "advanced-stream-row",
+      "advanced-timeout-row",
+      "advanced-debug-row",
+    ]) {
+      const row = byId<HTMLElement>(win, id);
+      if (row) {
+        advanced.appendChild(row);
+      }
+    }
+  }
+  for (const button of Array.from(
+    win.document.querySelectorAll<HTMLButtonElement>("[data-sl-tab]"),
+  )) {
+    button.addEventListener("click", () =>
+      setActiveTab(win, button.dataset.slTab ?? "basic"),
+    );
+  }
+  setActiveTab(win, "basic");
+}
+
 function populateStaticSelects(win: Window): void {
   const providerSelect = byId<HTMLSelectElement>(win, "provider");
   if (providerSelect && !providerSelect.options.length) {
@@ -258,6 +339,56 @@ function populateStaticSelects(win: Window): void {
       getString("pref-prefetch-language-latin"),
     );
   }
+
+  for (const [name, allowAuto] of [
+    ["targetLangSelect", false],
+    ["sourceLangSelect", true],
+  ] as const) {
+    const select = byId<HTMLSelectElement>(win, name);
+    if (!select || select.options.length) {
+      continue;
+    }
+    for (const [value, label] of LANGUAGE_CHOICES) {
+      if (value !== "auto" || allowAuto) {
+        addOption(win, select, value, label);
+      }
+    }
+    addOption(win, select, "__custom__", getString("pref-language-custom"));
+  }
+
+  for (const kind of PROFILE_KINDS) {
+    const select = byId<HTMLSelectElement>(
+      win,
+      `${kind === "word" ? "promptWord" : "promptSentence"}Variable`,
+    );
+    if (select && !select.options.length) {
+      for (const variable of PROMPT_VARIABLES) {
+        addOption(win, select, `{${variable}}`, `{${variable}}`);
+      }
+    }
+  }
+}
+
+function syncLanguageControl(
+  win: Window,
+  pref: "targetLang" | "sourceLang",
+): void {
+  const prefix = pref === "targetLang" ? "targetLang" : "sourceLang";
+  const value = String(
+    getPref(pref) || (pref === "targetLang" ? "zh-CN" : "auto"),
+  );
+  const select = byId<HTMLSelectElement>(win, `${prefix}Select`);
+  const input = byId<HTMLInputElement>(win, prefix);
+  if (input) {
+    input.value = value;
+  }
+  if (select) {
+    select.value = Array.from(select.options).some(
+      (option) => option.value === value,
+    )
+      ? value
+      : "__custom__";
+  }
 }
 
 function syncFromPrefs(win: Window): void {
@@ -292,12 +423,22 @@ function syncFromPrefs(win: Window): void {
       input.value = String(getPref(key) ?? "");
     }
   }
+  deduplicateActiveProviderCredentials("translation");
+  deduplicateActiveProviderCredentials("preprocess");
   for (const key of NUMBER_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
     if (input) {
-      input.value = String(getPref(key) ?? "");
+      const numericKey = key as NumericPrefKey;
+      const spec = NUMERIC_PREF_SCHEMA[numericKey];
+      input.min = String(spec.min);
+      input.max = String(spec.max);
+      input.step = String(spec.step);
+      input.value = String(normalizeNumberPref(numericKey, getPref(key)));
     }
   }
+
+  syncLanguageControl(win, "targetLang");
+  syncLanguageControl(win, "sourceLang");
   for (const key of BOOL_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
     if (input) {
@@ -318,6 +459,34 @@ function syncFromPrefs(win: Window): void {
   updatePlaceholders(win, "translation");
   updatePlaceholders(win, "preprocess");
   updateThinkingToggle(win);
+  updateEffectiveConfig(win, "translation");
+  updateEffectiveConfig(win, "preprocess");
+  updateDependentControls(win);
+}
+
+function deduplicateActiveProviderCredentials(scope: ProviderScope): void {
+  const provider = chosenScopeProvider(scope);
+  if (!provider) {
+    return;
+  }
+  const keys = PROVIDER_SCOPE_PREFS[scope];
+  const stored = parseProviderCredentials(getPref(keys.providerConfigs));
+  const duplicate = stored[provider];
+  const active = {
+    apiKey: String(getPref(keys.apiKey) ?? ""),
+    baseURL: String(getPref(keys.baseURL) ?? ""),
+    model: String(getPref(keys.model) ?? ""),
+  };
+  if (
+    duplicate &&
+    duplicate.apiKey === active.apiKey &&
+    duplicate.baseURL === active.baseURL &&
+    duplicate.model === active.model
+  ) {
+    const inactive = { ...stored };
+    delete inactive[provider];
+    setPref(keys.providerConfigs, serializeProviderCredentials(inactive));
+  }
 }
 
 /** Show the preset values as placeholders so "blank = preset" is discoverable. */
@@ -353,12 +522,19 @@ function updateScopeAvailability(win: Window): void {
       (HTMLElement & { disabled: boolean }) | null;
     if (input) {
       input.disabled = following;
+      if (scopeFieldOwnsRow(key, ids)) {
+        input.parentElement!.hidden = following;
+      }
     }
   }
   const hint = byId<HTMLElement>(win, "prefetch-provider-hint");
   if (hint) {
     hint.textContent = following ? getString("pref-prefetch-follow-hint") : "";
   }
+}
+
+function scopeFieldOwnsRow(key: string, ids: ProviderScopeIds): boolean {
+  return [ids.apiKey, ids.baseURL, ids.modelSelect, ids.model].includes(key);
 }
 
 /**
@@ -396,6 +572,105 @@ function readProviderInputs(
     baseURL: byId<HTMLInputElement>(win, ids.baseURL)?.value.trim() ?? "",
     model: byId<HTMLInputElement>(win, ids.model)?.value.trim() ?? "",
   };
+}
+
+function effectiveProviderConfigFromForm(win: Window, scope: ProviderScope) {
+  const actualScope =
+    scope === "preprocess" && !chosenScopeProvider("preprocess")
+      ? "translation"
+      : scope;
+  const provider = effectiveScopeProvider(scope);
+  const values = readProviderInputs(win, actualScope);
+  const rawTemperature = Number.parseFloat(
+    byId<HTMLInputElement>(win, "temperature")?.value || "0.3",
+  );
+  const temperature = Number.isFinite(rawTemperature) ? rawTemperature : 0.3;
+  return resolveProviderConfig({
+    provider,
+    ...values,
+    temperature: Math.min(2, Math.max(0, temperature)),
+    maxTokens: normalizeNumberPref(
+      "maxTokens",
+      byId<HTMLInputElement>(win, "maxTokens")?.value,
+    ),
+    timeoutMs: normalizeNumberPref(
+      "requestTimeoutMs",
+      byId<HTMLInputElement>(win, "requestTimeoutMs")?.value,
+    ),
+    stream: true,
+    disableThinking:
+      byId<HTMLInputElement>(win, "disableThinking")?.checked ?? true,
+  });
+}
+
+function updateEffectiveConfig(win: Window, scope: ProviderScope): void {
+  const config = effectiveProviderConfigFromForm(win, scope);
+  const id =
+    scope === "translation" ? "effective-config" : "prefetch-effective-config";
+  const node = byId<HTMLElement>(win, id);
+  if (node) {
+    node.textContent = getString("pref-effective-config", {
+      url: config.baseURL || "-",
+      model: config.model || "-",
+      following:
+        scope === "preprocess" && !chosenScopeProvider("preprocess")
+          ? getString("pref-effective-following")
+          : "",
+    });
+  }
+}
+
+async function testConnection(
+  win: Window,
+  scope: ProviderScope,
+): Promise<void> {
+  const button = byId<HTMLButtonElement>(
+    win,
+    scope === "translation" ? "testConnection" : "prefetchTestConnection",
+  );
+  const config = effectiveProviderConfigFromForm(win, scope);
+  setModelStatus(win, scope, getString("pref-test-running"));
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    let deltas = 0;
+    const result = await chatCompletion({
+      config: {
+        ...config,
+        maxTokens: Math.min(config.maxTokens, 64),
+        stream: true,
+      },
+      messages: [
+        { role: "system", content: "Return exactly OK." },
+        { role: "user", content: "Connection test" },
+      ],
+      onDelta: () => {
+        deltas += 1;
+      },
+    });
+    setModelStatus(
+      win,
+      scope,
+      getString("pref-test-ok", {
+        latency: String(result.elapsedMs),
+        model: result.model,
+        stream: result.streamed || deltas > 0 ? "✓" : "—",
+      }),
+    );
+  } catch (e) {
+    setModelStatus(
+      win,
+      scope,
+      getString("pref-test-failed", {
+        error: (e as Error)?.message || String(e),
+      }),
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
 }
 
 function writeProviderInputs(
@@ -609,15 +884,18 @@ function switchProvider(
   const parked = previous
     ? parkProviderCredentials(stored, previous, readProviderInputs(win, scope))
     : stored;
-  setPref(prefKeys.providerConfigs, serializeProviderCredentials(parked));
+  const nextValues = next
+    ? (parked[next] ?? EMPTY_PROVIDER_CREDENTIALS)
+    : EMPTY_PROVIDER_CREDENTIALS;
+  // The active provider already lives in the flat prefs consumed at runtime;
+  // keeping it in providerConfigs too creates a needless second plaintext key.
+  const inactive = { ...parked };
+  if (next) {
+    delete inactive[next];
+  }
+  setPref(prefKeys.providerConfigs, serializeProviderCredentials(inactive));
   setPref(prefKeys.provider, next);
-  writeProviderInputs(
-    win,
-    scope,
-    next
-      ? (parked[next] ?? EMPTY_PROVIDER_CREDENTIALS)
-      : EMPTY_PROVIDER_CREDENTIALS,
-  );
+  writeProviderInputs(win, scope, nextValues);
 }
 
 /** React to a scope's preset select: park/load values and refresh the pane. */
@@ -632,6 +910,7 @@ function onProviderChanged(win: Window, scope: ProviderScope): void {
   updateScopeAvailability(win);
   updatePlaceholders(win, scope);
   updateThinkingToggle(win);
+  updateEffectiveConfig(win, scope);
   seedModelOptions(win, scope);
   maybeAutoFetchModelOptions(win, scope);
   // A following preprocessing form mirrors the translation provider, so its
@@ -647,6 +926,11 @@ interface PromptEditorIds {
   select: string;
   name: string;
   system: string;
+  user: string;
+  variable: string;
+  insert: string;
+  previewButton: string;
+  preview: string;
   create: string;
   duplicate: string;
   remove: string;
@@ -657,6 +941,11 @@ const PROMPT_EDITORS: Record<SelectionKind, PromptEditorIds> = {
     select: "promptWordSelect",
     name: "promptWordName",
     system: "promptWord",
+    user: "promptWordUser",
+    variable: "promptWordVariable",
+    insert: "promptWordInsert",
+    previewButton: "promptWordPreviewButton",
+    preview: "promptWordPreview",
     create: "promptWordNew",
     duplicate: "promptWordCopy",
     remove: "promptWordDelete",
@@ -665,6 +954,11 @@ const PROMPT_EDITORS: Record<SelectionKind, PromptEditorIds> = {
     select: "promptSentenceSelect",
     name: "promptSentenceName",
     system: "promptSentence",
+    user: "promptSentenceUser",
+    variable: "promptSentenceVariable",
+    insert: "promptSentenceInsert",
+    previewButton: "promptSentencePreviewButton",
+    preview: "promptSentencePreview",
     create: "promptSentenceNew",
     duplicate: "promptSentenceCopy",
     remove: "promptSentenceDelete",
@@ -742,6 +1036,10 @@ function renderPromptEditor(
   if (systemBox) {
     systemBox.value = profile?.system ?? defaultSystemFor(kind);
   }
+  const userBox = byId<HTMLTextAreaElement>(win, ids.user);
+  if (userBox) {
+    userBox.value = profile?.user ?? defaultUserFor(kind);
+  }
 
   const removeBtn = byId<HTMLButtonElement>(win, ids.remove);
   if (removeBtn) {
@@ -787,7 +1085,9 @@ function commitPromptEditor(
 
   const nameInput = byId<HTMLInputElement>(win, ids.name);
   const systemBox = byId<HTMLTextAreaElement>(win, ids.system);
+  const userBox = byId<HTMLTextAreaElement>(win, ids.user);
   const system = systemBox?.value ?? current[target].system;
+  const user = userBox?.value ?? current[target].user;
   if (systemBox && !system.trim()) {
     // Show the restored prompt so a cleared box cannot look saved-as-empty.
     systemBox.value = defaultSystemFor(kind);
@@ -797,9 +1097,92 @@ function commitPromptEditor(
   const next = updateProfile(current, target, {
     name: nameInput?.value,
     system: system.trim() ? system : defaultSystemFor(kind),
+    user: user.trim() ? user : defaultUserFor(kind),
   });
   storePromptLibrary(next);
+  validatePromptEditor(win, kind, next[target]);
   return next;
+}
+
+function validatePromptEditor(
+  win: Window,
+  kind: SelectionKind,
+  profile: { system: string; user: string },
+): void {
+  const combined = `${profile.system}\n${profile.user}`;
+  if (!/\{\s*(text|word)\s*\}/u.test(combined)) {
+    setPromptStatus(win, getString("pref-prompt-warning-text"));
+  } else if (kind === "word" && !canBatch(profile.system)) {
+    setPromptStatus(win, getString("pref-prompt-warning-batch"));
+  } else {
+    setPromptStatus(win, getString("pref-prompt-saved"));
+  }
+}
+
+function currentReaderSelection(): string {
+  try {
+    const readers = (Zotero.Reader._readers ?? []) as Array<{
+      _iframeWindow?: { document?: Document };
+    }>;
+    for (const reader of [...readers].reverse()) {
+      const root = reader._iframeWindow?.document;
+      if (!root) {
+        continue;
+      }
+      for (const doc of collectReaderDocuments(root)) {
+        const selected = doc.getSelection?.()?.toString().trim();
+        if (selected) {
+          return selected;
+        }
+      }
+    }
+  } catch {
+    // The preview falls back to a small sample below.
+  }
+  return "";
+}
+
+function renderPromptPreview(win: Window, kind: SelectionKind): void {
+  const ids = PROMPT_EDITORS[kind];
+  const system = byId<HTMLTextAreaElement>(win, ids.system)?.value ?? "";
+  const user = byId<HTMLTextAreaElement>(win, ids.user)?.value ?? "";
+  const selected =
+    currentReaderSelection() ||
+    (kind === "word" ? "mitigate" : "The proposed method works.");
+  const vars = {
+    text: selected,
+    word: selected,
+    sentence: kind === "word" ? `The new policy may ${selected} the risk.` : "",
+    prevSentence: "Previous sentence.",
+    nextSentence: "Next sentence.",
+    sourceLang: String(getPref("sourceLang") || "auto"),
+    targetLang: String(getPref("targetLang") || "zh-CN"),
+    selectionType: kind,
+    itemTitle: "Current Zotero item",
+  };
+  const preview = byId<HTMLElement>(win, ids.preview);
+  if (preview) {
+    preview.hidden = false;
+    preview.textContent = `${getString("pref-system-prompt")}:\n${renderPrompt(
+      system,
+      vars,
+    )}\n\n${getString("pref-user-prompt")}:\n${renderPrompt(user, vars)}`;
+  }
+}
+
+function insertPromptVariable(win: Window, kind: SelectionKind): void {
+  const ids = PROMPT_EDITORS[kind];
+  const textarea = byId<HTMLTextAreaElement>(win, ids.user);
+  const variable =
+    byId<HTMLSelectElement>(win, ids.variable)?.value ?? "{text}";
+  if (!textarea) {
+    return;
+  }
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  textarea.setRangeText(variable, start, end, "end");
+  textarea.focus();
+  setPromptStatus(win, getString("pref-prompt-unsaved"));
 }
 
 /** Pick the preset that translations of this kind use by default. */
@@ -887,6 +1270,66 @@ function setCacheStatus(win: Window, message: string): void {
   const status = byId<HTMLElement>(win, "cacheStatus");
   if (status) {
     status.textContent = message;
+  }
+}
+
+function updateDependentControls(win: Window): void {
+  const cacheEnabled =
+    byId<HTMLInputElement>(win, "cacheEnabled")?.checked ?? true;
+  const useContext = byId<HTMLInputElement>(win, "useContext")?.checked ?? true;
+  const running = isJobRunning();
+  for (const id of [
+    "autoCacheOnMiss",
+    "cacheStrictSentence",
+    "cacheSingleCandidateFallback",
+    "prefetchOnOpen",
+    "prefetchProvider",
+    "prefetchBatchSize",
+    "prefetchConcurrency",
+    "prefetchDelayMs",
+    "prefetchMaxSentencesPerWord",
+    "prefetchLanguageFilter",
+    "prefetchApiKey",
+    "prefetchApiKeyToggle",
+    "prefetchApiKeyClear",
+    "prefetchBaseURL",
+    "prefetchModelSelect",
+    "prefetchModelFetch",
+    "prefetchModel",
+    "prefetchTestConnection",
+  ]) {
+    const control = byId<
+      HTMLInputElement | HTMLSelectElement | HTMLButtonElement
+    >(win, id);
+    if (control) {
+      control.disabled = !cacheEnabled;
+    }
+  }
+  if (cacheEnabled) {
+    updateScopeAvailability(win);
+  }
+  const autoPrefetch = byId<HTMLInputElement>(win, "prefetchOnOpen");
+  if (autoPrefetch) {
+    autoPrefetch.disabled = !cacheEnabled || !useContext;
+    autoPrefetch.title = !useContext
+      ? getString("pref-prefetch-context-disabled")
+      : "";
+  }
+  const pretranslate = byId<HTMLButtonElement>(win, "cachePretranslate");
+  if (pretranslate) {
+    pretranslate.disabled = !cacheEnabled || !useContext || running;
+    pretranslate.title = !useContext
+      ? getString("pref-prefetch-context-disabled")
+      : "";
+  }
+  const clear = byId<HTMLButtonElement>(win, "cacheClear");
+  if (clear) {
+    clear.disabled = running;
+    clear.title = running ? getString("pref-cache-stop-before-clear") : "";
+  }
+  const stop = byId<HTMLButtonElement>(win, "cacheStop");
+  if (stop) {
+    stop.disabled = !running;
   }
 }
 
@@ -1027,8 +1470,36 @@ async function runTask(win: Window, attachmentID: number): Promise<void> {
     return;
   }
   setCacheStatus(win, getString("pref-cache-running"));
-  await startPreprocess(attachmentID);
+  const result = await startPreprocess(attachmentID);
+  showPreprocessResult(win, result);
   await Promise.all([refreshCacheStats(win), refreshPreprocessTasks(win)]);
+}
+
+function showPreprocessResult(
+  win: Window,
+  result: Awaited<ReturnType<typeof startPreprocess>>,
+): void {
+  if (result.status === "done") {
+    setCacheStatus(
+      win,
+      getString("pref-task-result-done", {
+        done: String(result.done),
+        failed: String(result.failed),
+      }),
+    );
+  } else if (result.status === "cancelled") {
+    setCacheStatus(win, getString("pref-task-result-cancelled"));
+  } else if (result.status === "paused") {
+    setCacheStatus(
+      win,
+      getString("pref-task-result-paused", { reason: result.reason ?? "" }),
+    );
+  } else {
+    setCacheStatus(
+      win,
+      getString("pref-task-result-failed", { reason: result.reason }),
+    );
+  }
 }
 
 async function restartTask(win: Window, attachmentID: number): Promise<void> {
@@ -1068,6 +1539,7 @@ async function refreshPreprocessTasks(win: Window): Promise<void> {
   if (!list) {
     return;
   }
+  updateDependentControls(win);
   const active = getActiveJobProgress();
   const states = await listAttachmentStates();
   const tasks: DisplayTask[] = states.map((state) => ({
@@ -1179,21 +1651,29 @@ async function refreshPreprocessTasks(win: Window): Promise<void> {
   }
 }
 
-const taskRefreshTimers = new WeakMap<Window, number>();
+const taskRefreshSubscriptions = new WeakMap<Window, () => void>();
 
 function startTaskRefresh(win: Window): void {
-  if (taskRefreshTimers.has(win)) {
+  if (taskRefreshSubscriptions.has(win)) {
     return;
   }
-  const timer = win.setInterval(() => {
-    void refreshPreprocessTasks(win);
-  }, 1000);
-  taskRefreshTimers.set(win, timer);
+  let refreshQueued = false;
+  const unsubscribe = subscribePreprocessProgress(() => {
+    if (refreshQueued || win.document.visibilityState === "hidden") {
+      return;
+    }
+    refreshQueued = true;
+    win.setTimeout(() => {
+      refreshQueued = false;
+      void Promise.all([refreshPreprocessTasks(win), refreshCacheStats(win)]);
+    }, 100);
+  });
+  taskRefreshSubscriptions.set(win, unsubscribe);
   win.addEventListener(
     "unload",
     () => {
-      win.clearInterval(timer);
-      taskRefreshTimers.delete(win);
+      unsubscribe();
+      taskRefreshSubscriptions.delete(win);
     },
     { once: true },
   );
@@ -1233,6 +1713,58 @@ function bindEvents(win: Window): void {
     );
     byId<HTMLInputElement>(win, ids.model)?.addEventListener("change", () => {
       renderModelSelect(win, scope);
+      updateEffectiveConfig(win, scope);
+    });
+
+    byId<HTMLButtonElement>(
+      win,
+      scope === "translation" ? "testConnection" : "prefetchTestConnection",
+    )?.addEventListener("click", () => void testConnection(win, scope));
+
+    const keyInput = byId<HTMLInputElement>(win, ids.apiKey);
+    byId<HTMLButtonElement>(win, `${ids.apiKey}Toggle`)?.addEventListener(
+      "click",
+      (event) => {
+        if (!keyInput) {
+          return;
+        }
+        keyInput.type = keyInput.type === "password" ? "text" : "password";
+        (event.currentTarget as HTMLButtonElement).textContent = getString(
+          keyInput.type === "password" ? "pref-key-show" : "pref-key-hide",
+        );
+      },
+    );
+    byId<HTMLButtonElement>(win, `${ids.apiKey}Clear`)?.addEventListener(
+      "click",
+      () => {
+        if (keyInput) {
+          keyInput.value = "";
+        }
+        setPref(PROVIDER_SCOPE_PREFS[scope].apiKey, "");
+        updateEffectiveConfig(win, scope);
+      },
+    );
+  }
+
+  for (const pref of ["targetLang", "sourceLang"] as const) {
+    const select = byId<HTMLSelectElement>(win, `${pref}Select`);
+    const input = byId<HTMLInputElement>(win, pref);
+    select?.addEventListener("change", () => {
+      if (select.value === "__custom__") {
+        input?.focus();
+        return;
+      }
+      if (input) {
+        input.value = select.value;
+      }
+      setPref(pref, select.value);
+    });
+    input?.addEventListener("change", () => {
+      const value =
+        input.value.trim() || (pref === "targetLang" ? "zh-CN" : "auto");
+      input.value = value;
+      setPref(pref, value);
+      syncLanguageControl(win, pref);
     });
   }
 
@@ -1251,28 +1783,55 @@ function bindEvents(win: Window): void {
 
   for (const key of TEXT_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
-    input?.addEventListener("change", () => setPref(key, input.value.trim()));
+    input?.addEventListener("change", () => {
+      setPref(key, input.value.trim());
+      updateEffectiveConfig(win, "translation");
+      if (!chosenScopeProvider("preprocess")) {
+        updateEffectiveConfig(win, "preprocess");
+      }
+    });
   }
 
   for (const key of PREFETCH_TEXT_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
-    input?.addEventListener("change", () => setPref(key, input.value.trim()));
+    input?.addEventListener("change", () => {
+      setPref(key, input.value.trim());
+      updateEffectiveConfig(win, "preprocess");
+    });
   }
 
   for (const key of NUMBER_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
     input?.addEventListener("change", () => {
-      const value = Number(input.value);
-      if (Number.isFinite(value) && value > 0) {
-        setPrefRaw(key, value);
-      }
+      const value = normalizeNumberPref(key as NumericPrefKey, input.value);
+      input.value = String(value);
+      setPrefRaw(key, value);
+      updateEffectiveConfig(win, "translation");
+      updateEffectiveConfig(win, "preprocess");
     });
   }
 
   for (const key of BOOL_KEYS) {
     const input = byId<HTMLInputElement>(win, key);
-    input?.addEventListener("command", () => setPrefRaw(key, input.checked));
-    input?.addEventListener("change", () => setPrefRaw(key, input.checked));
+    input?.addEventListener("change", () => {
+      if (
+        input.checked &&
+        (key === "autoTranslate" || key === "prefetchOnOpen") &&
+        !win.confirm(
+          getString(
+            key === "autoTranslate"
+              ? "pref-auto-translate-confirm"
+              : "pref-prefetch-on-open-confirm",
+          ),
+        )
+      ) {
+        input.checked = false;
+      }
+      setPrefRaw(key, input.checked);
+      updateDependentControls(win);
+      updateEffectiveConfig(win, "translation");
+      updateEffectiveConfig(win, "preprocess");
+    });
   }
 
   const fontSizeInput = byId<HTMLInputElement>(win, "popupFontSize");
@@ -1290,12 +1849,23 @@ function bindEvents(win: Window): void {
       selectPromptProfile(win, kind, select.value);
     });
 
-    for (const key of [ids.name, ids.system]) {
+    for (const key of [ids.name, ids.system, ids.user]) {
       const field = byId<HTMLInputElement | HTMLTextAreaElement>(win, key);
+      field?.addEventListener("input", () =>
+        setPromptStatus(win, getString("pref-prompt-unsaved")),
+      );
       field?.addEventListener("change", () => {
         renderPromptEditor(win, kind, commitPromptEditor(win, kind));
       });
     }
+
+    byId<HTMLButtonElement>(win, ids.insert)?.addEventListener("click", () =>
+      insertPromptVariable(win, kind),
+    );
+    byId<HTMLButtonElement>(win, ids.previewButton)?.addEventListener(
+      "click",
+      () => renderPromptPreview(win, kind),
+    );
 
     byId<HTMLButtonElement>(win, ids.create)?.addEventListener("click", () => {
       addPromptProfile(win, kind, "new");
@@ -1329,7 +1899,13 @@ function bindEvents(win: Window): void {
         return;
       }
       setCacheStatus(win, getString("pref-cache-running"));
-      void startPreprocess(item.id).then(() => refreshCacheStats(win));
+      void startPreprocess(item.id).then(async (result) => {
+        showPreprocessResult(win, result);
+        await Promise.all([
+          refreshCacheStats(win),
+          refreshPreprocessTasks(win),
+        ]);
+      });
     },
   );
 
@@ -1350,6 +1926,10 @@ function bindEvents(win: Window): void {
   );
 
   byId<HTMLButtonElement>(win, "cacheClear")?.addEventListener("click", () => {
+    if (isJobRunning()) {
+      setCacheStatus(win, getString("pref-cache-stop-before-clear"));
+      return;
+    }
     if (!win.confirm(getString("pref-cache-clear-confirm"))) {
       return;
     }
@@ -1361,6 +1941,9 @@ function bindEvents(win: Window): void {
 
 /** Entry point, called from `preferences.xhtml` via `onPrefsEvent("load")`. */
 export function registerPrefsScripts(win: Window): void {
+  if (!bound.has(win)) {
+    organizePanels(win);
+  }
   populateStaticSelects(win);
   syncFromPrefs(win);
   seedModelOptions(win, "translation");

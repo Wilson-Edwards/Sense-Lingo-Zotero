@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   clearPartial,
+  clearDocumentStreamState,
   forEachLiveSlot,
   partialFor,
   rememberPartial,
+  POPUP_STREAM_MAX_ENTRIES,
   trackSlot,
 } from "../src/modules/reader/popupStream";
 
@@ -82,5 +84,23 @@ describe("popupStream", () => {
 
     expect(calls).toBe(0);
     expect(partialFor(doc, KEY)).toBe("");
+  });
+
+  it("releases all state for a destroyed reader document", () => {
+    const doc = makeDoc();
+    rememberPartial(doc, KEY, "减轻");
+    clearDocumentStreamState(doc);
+    expect(partialFor(doc, KEY)).toBe("");
+  });
+
+  it("bounds remembered selection streams per document", () => {
+    const doc = makeDoc();
+    for (let index = 0; index <= POPUP_STREAM_MAX_ENTRIES; index += 1) {
+      rememberPartial(doc, `key-${index}`, String(index));
+    }
+    expect(partialFor(doc, "key-0")).toBe("");
+    expect(partialFor(doc, `key-${POPUP_STREAM_MAX_ENTRIES}`)).toBe(
+      String(POPUP_STREAM_MAX_ENTRIES),
+    );
   });
 });

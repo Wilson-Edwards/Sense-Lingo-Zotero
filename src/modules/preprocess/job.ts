@@ -3,8 +3,8 @@
  *
  * One job runs at a time (`activeJob`). Every network call is bounded by the
  * provider's own timeout, every chunk is written in its own transaction, and a
- * cancel only takes effect between chunks — so an interrupted run leaves the
- * database in a consistent, resumable state.
+ * cancellation aborts requests, rate-limit waits and retry backoff while the
+ * serialized write queue keeps an interrupted run consistent and resumable.
  */
 
 import { chatCompletion, LlmError } from "../llm/client";
@@ -12,7 +12,7 @@ import { normalizeWordTranslation } from "../llm/format";
 import { isConfigured } from "../llm/providers";
 import { getProfile } from "../llm/prompt";
 import { renderPrompt } from "../llm/render";
-import { getEpubSections } from "../reader/textSource";
+import { getEpubSections, getItemTitle } from "../reader/textSource";
 import {
   getCacheDb,
   existingEntryKeys,
@@ -27,6 +27,7 @@ import { getNumberPref, getStringPref } from "../../utils/prefs";
 import { getString } from "../../utils/locale";
 import { log, warn } from "../../utils/logger";
 import { readSettings, type PluginSettings } from "../translate";
+import { resolveWebApis } from "../llm/runtime";
 import {
   buildBatchSystem,
   buildBatchUser,
@@ -77,6 +78,13 @@ export interface PreprocessOptions {
   confirm?: boolean;
 }
 
+export type PreprocessResult =
+  | { status: "done"; done: number; failed: number }
+  | { status: "paused"; done: number; failed: number; reason?: string }
+  | { status: "cancelled"; done: number; failed: number }
+  | { status: "not-started"; reason: string }
+  | { status: "failed"; reason: string };
+
 /** A safe, read-only snapshot for task-management UI. */
 export interface ActivePreprocessProgress {
   attachmentID: number;
@@ -86,6 +94,23 @@ export interface ActivePreprocessProgress {
 }
 
 let activeJob: PreprocessJob | null = null;
+const progressListeners = new Set<() => void>();
+
+function emitProgress(): void {
+  for (const listener of progressListeners) {
+    try {
+      listener();
+    } catch (e) {
+      warn("preprocessing progress listener failed", e);
+    }
+  }
+}
+
+/** Subscribe to job lifecycle/progress without polling the cache database. */
+export function subscribePreprocessProgress(listener: () => void): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
 
 export function isJobRunning(): boolean {
   return activeJob !== null;
@@ -103,19 +128,22 @@ export function cancelActiveJob(): void {
 export async function startPreprocess(
   attachmentItemID: number,
   options: PreprocessOptions = {},
-): Promise<void> {
+): Promise<PreprocessResult> {
   if (activeJob) {
     warn("a preprocessing job is already running");
-    return;
+    return { status: "not-started", reason: "busy" };
   }
   const job = new PreprocessJob(attachmentItemID, options);
   activeJob = job;
+  emitProgress();
   try {
-    await job.run();
+    return await job.run();
   } catch (e) {
     warn("preprocessing job failed", e);
+    return await job.markFailed(e);
   } finally {
     activeJob = null;
+    emitProgress();
   }
 }
 
@@ -124,6 +152,10 @@ class PreprocessJob {
   private readonly confirmFirst: boolean;
 
   private cancelled = false;
+  private readonly abortController = createJobAbortController();
+  private readonly limiter = new RequestStartLimiter(() =>
+    getNumberPref("prefetchDelayMs", 200),
+  );
   /** Set when a fatal provider/database error makes continuing pointless. */
   private stoppedReason: string | null = null;
 
@@ -132,6 +164,7 @@ class PreprocessJob {
   private userTemplate = "";
   private targetLang = "zh-CN";
   private profileId = "word";
+  private itemTitle = "";
   private promptSignature = "";
   private batchEnabled = false;
   private expectedLines = 0;
@@ -157,6 +190,23 @@ class PreprocessJob {
 
   cancel(): void {
     this.cancelled = true;
+    this.abortController?.abort();
+    emitProgress();
+  }
+
+  async markFailed(error: unknown): Promise<PreprocessResult> {
+    const reason = describeError(error);
+    this.stoppedReason = reason;
+    // Once a durable job record exists, never leave it looking "running" after
+    // an unexpected extraction/database exception.
+    if (this.signature) {
+      try {
+        await this.finish("failed");
+      } catch (stateError) {
+        warn("failed to persist preprocessing failure", stateError);
+      }
+    }
+    return { status: "failed", reason };
   }
 
   progressSnapshot(): ActivePreprocessProgress {
@@ -168,17 +218,21 @@ class PreprocessJob {
     };
   }
 
-  async run(): Promise<void> {
+  async run(): Promise<PreprocessResult> {
     const settings = readSettings();
+    if (!settings.cacheEnabled) {
+      this.notifyError(getString("prefetch-need-cache"));
+      return { status: "not-started", reason: "cache-disabled" };
+    }
     if (!settings.useContext) {
       this.notifyError(getString("prefetch-need-context"));
-      return;
+      return { status: "not-started", reason: "context-disabled" };
     }
     // The preprocessing provider can be its own; without a key every request
     // would fail the same way, so say it once up front.
     if (!isConfigured(settings.prefetchProvider)) {
       this.notifyError(getString("prefetch-need-provider"));
-      return;
+      return { status: "not-started", reason: "provider-not-configured" };
     }
     const profile = getProfile(
       settings.profiles,
@@ -194,6 +248,8 @@ class PreprocessJob {
       this.systemTemplate,
       this.userTemplate,
       this.targetLang,
+      settings.sourceLang,
+      getItemTitle(this.attachmentItemID),
     );
     this.batchEnabled =
       getNumberPref("prefetchBatchSize", 12) > 1 &&
@@ -202,30 +258,31 @@ class PreprocessJob {
     const item = this.readAttachment();
     if (!item) {
       this.notifyError(getString("prefetch-not-epub"));
-      return;
+      return { status: "not-started", reason: "not-epub" };
     }
+    this.itemTitle = getItemTitle(this.attachmentItemID);
 
     const sections = await getEpubSections(this.attachmentItemID);
     if (!sections?.length) {
       this.notifyError(getString("prefetch-no-text"));
-      return;
+      return { status: "not-started", reason: "no-text" };
     }
 
     const items = this.buildItems(sections);
     this.total = items.length;
     if (!this.total) {
       this.notifyError(getString("prefetch-no-entries"));
-      return;
+      return { status: "done", done: 0, failed: 0 };
     }
 
     if (this.confirmFirst && !this.confirm()) {
-      return;
+      return { status: "not-started", reason: "declined" };
     }
 
     const db = await getCacheDb();
     if (!db) {
       this.notifyError(getString("prefetch-no-db"));
-      return;
+      return { status: "not-started", reason: "database-unavailable" };
     }
 
     this.bookChars = textLength(sections);
@@ -238,7 +295,7 @@ class PreprocessJob {
       targetLang: this.targetLang,
     });
     this.doneCount = Math.min(existing.size, planned);
-    const pending = items.filter(
+    let pending = items.filter(
       (entry) => !existing.has(`${entry.wordKey}\u0000${entry.sentenceKey}`),
     );
 
@@ -252,6 +309,7 @@ class PreprocessJob {
       failed: 0,
       updatedAt: Date.now(),
     });
+    emitProgress();
 
     log("preprocess job", {
       attachment: this.attachmentItemID,
@@ -263,17 +321,33 @@ class PreprocessJob {
 
     if (!pending.length) {
       await this.finish("done");
-      return;
+      return { status: "done", done: this.doneCount, failed: this.failedCount };
     }
 
     if (this.batchEnabled) {
-      const lines = await this.probeExpectedLines(pending[0]);
-      if (!lines) {
+      const probe = await this.probeExpectedLines(pending[0]);
+      if (!probe?.lines) {
         this.batchEnabled = false;
         warn("batching disabled: the template's line count is unstable");
       } else {
-        this.expectedLines = lines;
+        this.expectedLines = probe.lines;
+        if (probe.translation) {
+          await this.write(
+            [pending[0]],
+            [normalizeWordTranslation(probe.translation)],
+          );
+          pending = pending.slice(1);
+        }
       }
+    }
+
+    if (this.cancelled) {
+      await this.finish("paused");
+      return {
+        status: "cancelled",
+        done: this.doneCount,
+        failed: this.failedCount,
+      };
     }
 
     const chunks = this.batchEnabled
@@ -285,6 +359,22 @@ class PreprocessJob {
 
     await this.runChunks(chunks);
     await this.finish(this.cancelled || this.stoppedReason ? "paused" : "done");
+    if (this.cancelled) {
+      return {
+        status: "cancelled",
+        done: this.doneCount,
+        failed: this.failedCount,
+      };
+    }
+    if (this.stoppedReason) {
+      return {
+        status: "paused",
+        done: this.doneCount,
+        failed: this.failedCount,
+        reason: this.stoppedReason,
+      };
+    }
+    return { status: "done", done: this.doneCount, failed: this.failedCount };
   }
 
   // ---------------------------------------------------------------- extraction
@@ -317,7 +407,10 @@ class PreprocessJob {
       languageFilter: normalizePreprocessLanguageFilter(
         getStringPref("prefetchLanguageFilter", "system"),
       ),
-      systemLocale: Zotero.locale,
+      // "system" historically meant the UI locale. The target language is a
+      // better signal: it filters already-translated passages regardless of
+      // the language Zotero itself happens to use.
+      systemLocale: settings.targetLang,
     });
     return candidates.map((candidate) => ({
       word: candidate.word,
@@ -333,7 +426,7 @@ class PreprocessJob {
         targetLang: this.targetLang,
         sourceLang: settings.sourceLang,
         selectionType: "word",
-        itemTitle: "",
+        itemTitle: this.itemTitle,
       }),
     }));
   }
@@ -431,6 +524,9 @@ class PreprocessJob {
   }
 
   private async finish(state: "done" | "paused" | "failed"): Promise<void> {
+    // No cache deletion can start while the job is active, but still make the
+    // state transition explicitly wait for every queued row/state write.
+    await this.writeQueue;
     await saveAttachmentState({
       attachmentID: this.attachmentItemID,
       state,
@@ -457,26 +553,31 @@ class PreprocessJob {
       // Nothing to do when the window is gone.
     }
     log("preprocess finished", state, summary);
+    emitProgress();
   }
 
   // -------------------------------------------------------------------- batching
 
   /** Probe how many lines one answer of this template has, so batches match. */
-  private async probeExpectedLines(sample: JobItem): Promise<number | null> {
+  private async probeExpectedLines(
+    sample: JobItem,
+  ): Promise<{ lines: number; translation?: string } | null> {
     const key = `expectedLines:${this.promptSignature}`;
     const stored = Number(await getMeta(key));
     if (Number.isInteger(stored) && stored > 0) {
-      return stored;
+      return { lines: stored };
     }
     try {
       const result = await this.requestSingle(sample);
       const lines = countAnswerLines(result);
       if (lines > 0) {
         await setMeta(key, String(lines));
-        return lines;
+        return { lines, translation: result };
       }
     } catch (e) {
-      if (this.isFatal(e)) {
+      if (isCancelledError(e)) {
+        this.cancelled = true;
+      } else if (this.isFatal(e)) {
         this.stoppedReason = describeError(e);
       }
     }
@@ -522,6 +623,7 @@ class PreprocessJob {
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
+        await this.limiter.wait(this.abortController?.signal);
         return await chatCompletion({
           config: this.providerConfig(
             maxTokens * 2 ** (attempt - 1),
@@ -529,18 +631,22 @@ class PreprocessJob {
           ),
           messages,
           timeoutMs,
+          signal: this.abortController?.signal,
         });
       } catch (e) {
         lastError = e;
         if (!isRetryableError(e) || this.cancelled || attempt === attempts) {
           throw e;
         }
-        const wait = retryDelay(attempt);
+        const wait = Math.max(
+          retryDelay(attempt),
+          e instanceof LlmError ? (e.retryAfterMs ?? 0) : 0,
+        );
         warn(
           `request failed (attempt ${attempt}/${attempts}), retrying in ${wait}ms`,
           describeError(e),
         );
-        await sleep(wait);
+        await abortableSleep(wait, this.abortController?.signal);
       }
     }
     throw lastError;
@@ -552,7 +658,6 @@ class PreprocessJob {
       { role: "system", content: this.systemTemplate },
       { role: "user", content: item.userPrompt },
     ]);
-    await this.delay();
     return response.content;
   }
 
@@ -578,14 +683,16 @@ class PreprocessJob {
       ],
       this.batchTimeout(items.length),
     );
-    await this.delay();
     return parseBatchOutput(response.content, items.length, this.expectedLines);
   }
 
   /** A batch of `count` reasoning answers is slower than one click request. */
   private batchTimeout(count: number): number {
     const base = this.settings?.prefetchProvider.timeoutMs ?? 30_000;
-    return Math.max(base, BATCH_TIMEOUT_BASE_MS + BATCH_TIMEOUT_PER_ITEM_MS * count);
+    return Math.max(
+      base,
+      BATCH_TIMEOUT_BASE_MS + BATCH_TIMEOUT_PER_ITEM_MS * count,
+    );
   }
 
   // --------------------------------------------------------------------- chunks
@@ -606,7 +713,9 @@ class PreprocessJob {
         await this.handleChunk(chunks[index], 0);
         this.updateProgress();
         // Hand the main thread back so the UI keeps painting between chunks.
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await abortableSleep(0, this.abortController?.signal).catch(
+          () => undefined,
+        );
       }
     };
     await Promise.all(
@@ -628,7 +737,10 @@ class PreprocessJob {
         }
         parseFailure = true;
       } catch (e) {
-        if (isBatchParseError(e)) {
+        if (isCancelledError(e)) {
+          this.cancelled = true;
+          return;
+        } else if (isBatchParseError(e)) {
           // The body arrived but did not follow the marker contract: a smaller
           // batch is the cheapest way to find out whether size is the issue.
           parseFailure = true;
@@ -665,6 +777,10 @@ class PreprocessJob {
         const raw = await this.requestSingle(item);
         await this.write([item], [normalizeWordTranslation(raw)]);
       } catch (e) {
+        if (isCancelledError(e)) {
+          this.cancelled = true;
+          return;
+        }
         if (this.isFatal(e)) {
           this.stopForError(e);
           return;
@@ -720,6 +836,7 @@ class PreprocessJob {
       this.consecutiveFailures = 0;
     }
     this.updateProgress();
+    emitProgress();
   }
 
   /** Writes are serialised: one SQLite connection handles one transaction. */
@@ -743,13 +860,32 @@ class PreprocessJob {
         error.code === "NOT_CONFIGURED")
     );
   }
+}
 
-  private async delay(): Promise<void> {
-    const ms = Math.max(0, getNumberPref("prefetchDelayMs", 200));
-    if (!ms) {
-      return;
+/** Serializes request starts while leaving requests themselves concurrent. */
+class RequestStartLimiter {
+  private queue: Promise<void> = Promise.resolve();
+  private nextStartAt = 0;
+
+  constructor(private readonly intervalMs: () => number) {}
+
+  async wait(signal?: AbortSignal): Promise<void> {
+    let release = (): void => undefined;
+    const previous = this.queue;
+    this.queue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      const waitMs = Math.max(0, this.nextStartAt - Date.now());
+      await abortableSleep(waitMs, signal);
+      if (signal?.aborted) {
+        throw new LlmError("ABORTED", "Request was cancelled");
+      }
+      this.nextStartAt = Date.now() + Math.max(0, this.intervalMs());
+    } finally {
+      release();
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, ms));
   }
 }
 
@@ -798,8 +934,36 @@ function retryDelay(attempt: number): number {
   return wait + Math.floor(Math.random() * 250);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function createJobAbortController(): AbortController | null {
+  return (
+    resolveWebApis()?.createAbortController() ??
+    (typeof AbortController === "function" ? new AbortController() : null)
+  );
+}
+
+function isCancelledError(error: unknown): boolean {
+  return error instanceof LlmError && error.code === "ABORTED";
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new LlmError("ABORTED", "Request was cancelled"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new LlmError("ABORTED", "Request was cancelled"));
+    };
+    const timer = setTimeout(
+      () => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      Math.max(0, ms),
+    );
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function describeError(error: unknown): string {

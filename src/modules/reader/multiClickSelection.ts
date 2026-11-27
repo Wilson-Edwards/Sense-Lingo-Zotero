@@ -106,14 +106,16 @@ interface ClickState {
 }
 
 const states = new WeakMap<Document, ClickState>();
-const attachedDocs = new Map<
+const attachedDocs = new WeakMap<
   Document,
   { mousedown: EventListener; mouseup: EventListener }
 >();
 const watchedDocs = new WeakSet<Document>();
 const attachedFrames = new WeakSet<HTMLIFrameElement>();
-const observers = new Set<MutationObserver>();
-const frameCleanups = new Set<() => void>();
+const documentCleanups = new WeakMap<Document, () => void>();
+const frameCleanups = new WeakMap<HTMLIFrameElement, () => void>();
+/** Only live documents are strong; pagehide/removal deletes their disposer. */
+const activeDocumentCleanups = new Set<() => void>();
 
 function caretRangeFromPoint(
   doc: Document,
@@ -406,7 +408,36 @@ function attachFrame(frame: HTMLIFrameElement): void {
     }
   };
   frame.addEventListener("load", onLoad);
-  frameCleanups.add(() => frame.removeEventListener("load", onLoad));
+  const cleanup = (): void => {
+    frame.removeEventListener("load", onLoad);
+    try {
+      if (frame.contentDocument) {
+        disposeDocument(frame.contentDocument);
+      }
+    } catch {
+      // Cross-origin frames have no accessible document to release.
+    }
+    frameCleanups.delete(frame);
+    attachedFrames.delete(frame);
+  };
+  frameCleanups.set(frame, cleanup);
+}
+
+function detachFramesIn(node: Node): void {
+  if (node.nodeType !== 1) {
+    return;
+  }
+  const element = node as Element;
+  if (element.matches("iframe, frame")) {
+    frameCleanups.get(element as HTMLIFrameElement)?.();
+  }
+  for (const frame of Array.from(element.querySelectorAll("iframe, frame"))) {
+    frameCleanups.get(frame as HTMLIFrameElement)?.();
+  }
+}
+
+function disposeDocument(doc: Document): void {
+  documentCleanups.get(doc)?.();
 }
 
 function watchDocument(doc: Document): void {
@@ -420,33 +451,56 @@ function watchDocument(doc: Document): void {
   }
 
   const root = doc.documentElement;
-  if (!root) {
-    return;
-  }
   const MutationObserverClass = doc.defaultView?.MutationObserver;
-  if (!MutationObserverClass) {
-    return;
-  }
-  const observer = new MutationObserverClass((mutations) => {
-    for (const mutation of mutations) {
-      for (const added of Array.from(mutation.addedNodes)) {
-        if (!added || added.nodeType !== 1) {
-          continue;
+  let observer: MutationObserver | null = null;
+  if (root && MutationObserverClass) {
+    observer = new MutationObserverClass((mutations) => {
+      for (const mutation of mutations) {
+        for (const removed of Array.from(mutation.removedNodes)) {
+          if (removed) {
+            detachFramesIn(removed);
+          }
         }
-        const element = added as Element;
-        if (element.matches("iframe, frame")) {
-          attachFrame(element as HTMLIFrameElement);
-        }
-        for (const frame of Array.from(
-          element.querySelectorAll("iframe, frame"),
-        )) {
-          attachFrame(frame as HTMLIFrameElement);
+        for (const added of Array.from(mutation.addedNodes)) {
+          if (!added || added.nodeType !== 1) {
+            continue;
+          }
+          const element = added as Element;
+          if (element.matches("iframe, frame")) {
+            attachFrame(element as HTMLIFrameElement);
+          }
+          for (const frame of Array.from(
+            element.querySelectorAll("iframe, frame"),
+          )) {
+            attachFrame(frame as HTMLIFrameElement);
+          }
         }
       }
+    });
+    observer.observe(root, { childList: true, subtree: true });
+  }
+  const onPageHide = (): void => disposeDocument(doc);
+  doc.defaultView?.addEventListener("pagehide", onPageHide, { once: true });
+  const cleanup = (): void => {
+    observer?.disconnect();
+    doc.defaultView?.removeEventListener("pagehide", onPageHide);
+    removePendingSelectionChange(doc);
+    const listeners = attachedDocs.get(doc);
+    if (listeners) {
+      doc.removeEventListener("mousedown", listeners.mousedown, true);
+      doc.removeEventListener("mouseup", listeners.mouseup, true);
+      attachedDocs.delete(doc);
     }
-  });
-  observer.observe(root, { childList: true, subtree: true });
-  observers.add(observer);
+    for (const frame of Array.from(doc.querySelectorAll("iframe, frame"))) {
+      frameCleanups.get(frame as HTMLIFrameElement)?.();
+    }
+    states.delete(doc);
+    watchedDocs.delete(doc);
+    documentCleanups.delete(doc);
+    activeDocumentCleanups.delete(cleanup);
+  };
+  documentCleanups.set(doc, cleanup);
+  activeDocumentCleanups.add(cleanup);
 }
 
 interface RenderReaderEvent {
@@ -507,20 +561,9 @@ export function registerMultiClickSelection(): () => void {
     } catch (error) {
       warn("failed to unregister multi-click selection", error);
     }
-    for (const [doc, listeners] of attachedDocs) {
-      removePendingSelectionChange(doc);
-      doc.removeEventListener("mousedown", listeners.mousedown, true);
-      doc.removeEventListener("mouseup", listeners.mouseup, true);
-      watchedDocs.delete(doc);
-    }
-    attachedDocs.clear();
-    for (const observer of observers) {
-      observer.disconnect();
-    }
-    observers.clear();
-    for (const cleanup of frameCleanups) {
+    for (const cleanup of [...activeDocumentCleanups]) {
       cleanup();
     }
-    frameCleanups.clear();
+    activeDocumentCleanups.clear();
   };
 }

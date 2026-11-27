@@ -55,16 +55,18 @@ const S = {
     "position:fixed",
     "right:16px",
     "bottom:16px",
-    "width:380px",
+    "width:min(380px,calc(100vw - 32px))",
+    "box-sizing:border-box",
     "max-height:70vh",
     "display:flex",
     "flex-direction:column",
     "gap:8px",
     "padding:12px",
     "border-radius:8px",
-    "background:#ffffff",
-    "color:#1a1a1a",
-    "border:1px solid #d0d0d0",
+    "background:Canvas",
+    "color:CanvasText",
+    "color-scheme:light dark",
+    "border:1px solid GrayText",
     "box-shadow:0 8px 24px rgba(0,0,0,.18)",
     "font:13px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif",
     "z-index:2147483647",
@@ -81,46 +83,46 @@ const S = {
     "white-space:nowrap",
   ].join(";"),
   profileName:
-    "flex:1;color:#666;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+    "flex:1;color:GrayText;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
   iconBtn: [
     "border:none",
     "background:transparent",
     "cursor:pointer",
-    "color:#666",
+    "color:GrayText",
     "font-size:14px",
     "padding:0 2px",
     "line-height:1",
   ].join(";"),
   body: "overflow:auto;white-space:pre-wrap;word-break:break-word;user-select:text;",
   context: [
-    "border-left:2px solid #d0d0d0",
+    "border-left:2px solid GrayText",
     "padding-left:8px",
-    "color:#777",
+    "color:GrayText",
     "font-size:12px",
     "font-style:italic",
     "max-height:6em",
     "overflow:auto",
     "user-select:text",
   ].join(";"),
-  meta: "color:#999;font-size:11px;",
+  meta: "color:GrayText;font-size:11px;",
   profileRow: "display:none;align-items:center;gap:6px;",
-  profileRowLabel: "color:#666;font-size:11px;white-space:nowrap;",
+  profileRowLabel: "color:GrayText;font-size:11px;white-space:nowrap;",
   select: [
     "flex:1",
     "min-width:0",
-    "border:1px solid #d0d0d0",
+    "border:1px solid GrayText",
     "border-radius:4px",
-    "background:#f7f7f7",
-    "color:#333",
+    "background:Field",
+    "color:FieldText",
     "font-size:11px",
     "padding:2px 4px",
   ].join(";"),
   footer: "display:flex;gap:6px;flex-wrap:wrap;",
   btn: [
-    "border:1px solid #d0d0d0",
+    "border:1px solid GrayText",
     "border-radius:4px",
-    "background:#f7f7f7",
-    "color:#333",
+    "background:ButtonFace",
+    "color:ButtonText",
     "cursor:pointer",
     "font-size:12px",
     "padding:3px 8px",
@@ -129,7 +131,7 @@ const S = {
     "width:100%",
     "box-sizing:border-box",
     "font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace",
-    "border:1px solid #d0d0d0",
+    "border:1px solid GrayText",
     "border-radius:4px",
     "padding:6px",
     "resize:vertical",
@@ -158,23 +160,39 @@ export class ResultPanel {
   private state: PanelState;
   private callbacks: PanelCallbacks | null = null;
   private editorOpen = false;
+  private readonly previousFocus: Element | null;
+  private readonly onDocumentKeyDown: (event: KeyboardEvent) => void;
 
   constructor(doc: Document, state: PanelState) {
     this.doc = doc;
     this.state = state;
+    this.previousFocus = doc.activeElement;
+    this.onDocumentKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.callbacks?.onClose();
+      }
+    };
 
     this.root = el(doc, "div", S.root);
     this.root.id = PANEL_ID;
+    this.root.setAttribute("role", "dialog");
+    this.root.setAttribute("aria-label", getString("panel-title"));
+    this.root.setAttribute("aria-modal", "false");
 
     const header = el(doc, "div", S.header);
     this.badge = el(doc, "span", S.badge);
     this.profileLabel = el(doc, "span", S.profileName);
     const closeBtn = el(doc, "button", S.iconBtn, "×");
     closeBtn.title = getString("panel-btn-close");
+    closeBtn.setAttribute("aria-label", getString("panel-btn-close"));
     closeBtn.addEventListener("click", () => this.callbacks?.onClose());
     header.append(this.badge, this.profileLabel, closeBtn);
 
     this.body = el(doc, "div", S.body);
+    this.body.setAttribute("role", "status");
+    this.body.setAttribute("aria-live", "polite");
+    this.body.setAttribute("aria-atomic", "true");
     this.context = el(doc, "div", S.context);
     this.meta = el(doc, "div", S.meta);
 
@@ -186,6 +204,10 @@ export class ResultPanel {
       getString("panel-profile-label"),
     );
     this.profileSelect = el(doc, "select", S.select);
+    this.profileSelect.setAttribute(
+      "aria-label",
+      getString("panel-profile-label"),
+    );
     this.profileSelect.addEventListener("change", () => {
       this.callbacks?.onSelectProfile(this.profileSelect.value);
     });
@@ -206,12 +228,19 @@ export class ResultPanel {
     );
     this.retryBtn.addEventListener("click", () => this.toggleEditor());
     this.copyBtn = el(doc, "button", S.btn, getString("panel-btn-copy"));
+    this.retryBtn.setAttribute(
+      "aria-label",
+      getString("panel-btn-edit-prompt"),
+    );
+    this.copyBtn.setAttribute("aria-label", getString("panel-btn-copy"));
     this.copyBtn.addEventListener("click", () => this.callbacks?.onCopy());
     footer.append(this.flipBtn, this.retryBtn, this.copyBtn);
 
     this.editor = el(doc, "textarea", S.editor);
+    this.editor.setAttribute("aria-label", getString("panel-btn-edit-prompt"));
     this.editor.style.display = "none";
     this.sendBtn = el(doc, "button", S.btn, getString("panel-btn-retry"));
+    this.sendBtn.setAttribute("aria-label", getString("panel-btn-retry"));
     this.sendBtn.style.display = "none";
     this.sendBtn.addEventListener("click", () => {
       if (this.callbacks) {
@@ -230,6 +259,7 @@ export class ResultPanel {
       this.sendBtn,
     );
     this.mount();
+    this.doc.addEventListener("keydown", this.onDocumentKeyDown, true);
     this.render();
   }
 
@@ -273,8 +303,9 @@ export class ResultPanel {
     this.badge.textContent = getString(
       isWord ? "panel-kind-word" : "panel-kind-sentence",
     );
-    this.badge.style.background = isWord ? "#e8f0fe" : "#ecfdf3";
-    this.badge.style.color = isWord ? "#1a56db" : "#027a48";
+    // Text labels distinguish the modes; system colors keep both themes legible.
+    this.badge.style.background = "Mark";
+    this.badge.style.color = "MarkText";
 
     this.profileLabel.textContent = this.state.profileName ?? "";
     this.profileLabel.title = this.state.usedFallback
@@ -290,14 +321,14 @@ export class ResultPanel {
       // instead of the placeholder so the text grows in place.
       const partial = this.state.translation ?? "";
       this.body.textContent = partial || getString("panel-loading");
-      this.body.style.color = partial ? "#1a1a1a" : "#666";
+      this.body.style.color = partial ? "CanvasText" : "GrayText";
     } else if (status === "error") {
       this.body.textContent =
         this.state.errorMessage || getString("error-generic");
-      this.body.style.color = "#b42318";
+      this.body.style.color = "LinkText";
     } else {
       this.body.textContent = this.state.translation ?? "";
-      this.body.style.color = "#1a1a1a";
+      this.body.style.color = "CanvasText";
     }
 
     const contextText = isWord ? (this.state.sentence ?? "") : "";
@@ -359,8 +390,13 @@ export class ResultPanel {
   }
 
   destroy(): void {
+    this.doc.removeEventListener("keydown", this.onDocumentKeyDown, true);
     this.root.remove();
     this.callbacks = null;
+    const focus = this.previousFocus as HTMLElement | null;
+    if (focus?.isConnected && typeof focus.focus === "function") {
+      focus.focus();
+    }
   }
 }
 

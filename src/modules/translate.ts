@@ -312,6 +312,7 @@ export async function translate(
   }
 
   const context = await resolveContext(input, kind, settings);
+  const itemTitle = input.itemTitle ?? getItemTitle(input.attachmentItemID);
   const rendered = renderPromptFor({
     kind,
     text,
@@ -319,7 +320,7 @@ export async function translate(
     includeNeighbors: settings.sentenceContextNeighbors,
     sourceLang: settings.sourceLang,
     targetLang: settings.targetLang,
-    itemTitle: input.itemTitle ?? getItemTitle(input.attachmentItemID),
+    itemTitle,
     profiles: settings.profiles,
     wordProfileId: settings.wordProfileId,
     sentenceProfileId: settings.sentenceProfileId,
@@ -352,6 +353,8 @@ export async function translate(
           profileForCache.system,
           profileForCache.user,
           settings.targetLang,
+          settings.sourceLang,
+          itemTitle,
         )
       : "";
   const cacheEligible =

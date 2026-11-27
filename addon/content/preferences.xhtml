@@ -14,7 +14,18 @@
   left; text-decoration: underline; text-underline-offset: 2px; text-overflow:
   ellipsis; white-space: nowrap; cursor: pointer; } .sl-task-meta,
   .sl-task-empty { color: #6b7280; font-size: 11px; margin-top: 2px; }
-  .sl-task-actions { display: flex; flex: 0 0 auto; gap: 5px; }
+  .sl-task-actions { display: flex; flex: 0 0 auto; gap: 5px; } .sl-tabs {
+  display: flex; gap: 4px; margin: 2px 0 12px; border-bottom: 1px solid #d1d5db;
+  } .sl-tab { padding: 6px 10px; border: 0; border-bottom: 2px solid
+  transparent; background: transparent; cursor: pointer; }
+  .sl-tab[aria-selected="true"] { border-bottom-color: AccentColor; font-weight:
+  600; } .sl-tab-panel[hidden] { display: none; } .sl-security { color: #92400e;
+  } .sl-effective { padding: 6px 8px; border-radius: 4px; background:
+  color-mix(in srgb, CanvasText 6%, Canvas); font-size: 11px; margin: 4px 0 6px
+  186px; } .sl-prompt-tools { display: flex; gap: 5px; margin: 4px 0; }
+  .sl-prompt-preview { white-space: pre-wrap; max-height: 100px; overflow: auto;
+  padding: 6px; border: 1px dashed #9ca3af; border-radius: 4px; font: 11px/1.4
+  ui-monospace, monospace; }
 </html:style>
 
 <linkset>
@@ -24,7 +35,30 @@
 <groupbox>
   <label><html:h2 data-l10n-id="pref-title"></html:h2></label>
 
-  <vbox class="sl-section">
+  <html:nav class="sl-tabs" aria-label="Sense Lingo settings">
+    <html:button
+      class="sl-tab"
+      data-sl-tab="basic"
+      data-l10n-id="pref-tab-basic"
+    />
+    <html:button
+      class="sl-tab"
+      data-sl-tab="behavior"
+      data-l10n-id="pref-tab-behavior"
+    />
+    <html:button
+      class="sl-tab"
+      data-sl-tab="cache"
+      data-l10n-id="pref-tab-cache"
+    />
+    <html:button
+      class="sl-tab"
+      data-sl-tab="advanced"
+      data-l10n-id="pref-tab-advanced"
+    />
+  </html:nav>
+
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="basic">
     <label><html:h3 data-l10n-id="pref-head-provider"></html:h3></label>
 
     <hbox align="center" class="sl-row">
@@ -42,7 +76,13 @@
         style="min-width: 240px"
         placeholder="sk-..."
       />
+      <html:button id="sl-apiKeyToggle" data-l10n-id="pref-key-show" />
+      <html:button id="sl-apiKeyClear" data-l10n-id="pref-key-clear" />
     </hbox>
+    <html:div
+      class="sl-hint sl-security"
+      data-l10n-id="pref-key-warning"
+    ></html:div>
 
     <hbox align="center" class="sl-row">
       <html:label for="sl-baseURL" data-l10n-id="pref-base-url"></html:label>
@@ -65,7 +105,12 @@
     <html:div class="sl-hint" data-l10n-id="pref-model-hint"></html:div>
     <html:div id="sl-model-status" class="sl-hint"></html:div>
 
-    <hbox align="center" class="sl-row">
+    <html:div id="sl-effective-config" class="sl-effective"></html:div>
+    <hbox class="sl-row" style="margin-left: 186px; gap: 6px">
+      <html:button id="sl-testConnection" data-l10n-id="pref-test-connection" />
+    </hbox>
+
+    <hbox align="center" class="sl-row" id="sl-advanced-request-row">
       <html:label
         for="sl-temperature"
         data-l10n-id="pref-temperature"
@@ -92,7 +137,7 @@
       />
     </hbox>
 
-    <html:div class="sl-row">
+    <html:div class="sl-row" id="sl-advanced-thinking-row">
       <html:input type="checkbox" id="sl-disableThinking" />
       <html:label
         for="sl-disableThinking"
@@ -102,7 +147,33 @@
     <html:div id="sl-thinking-hint" class="sl-hint"></html:div>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="basic">
+    <label><html:h3 data-l10n-id="pref-head-language"></html:h3></label>
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-targetLangSelect"
+        data-l10n-id="pref-target-lang"
+      ></html:label>
+      <html:select
+        id="sl-targetLangSelect"
+        style="min-width: 170px"
+      ></html:select>
+      <html:input type="text" id="sl-targetLang" style="width: 110px" />
+    </hbox>
+    <hbox align="center" class="sl-row">
+      <html:label
+        for="sl-sourceLangSelect"
+        data-l10n-id="pref-source-lang"
+      ></html:label>
+      <html:select
+        id="sl-sourceLangSelect"
+        style="min-width: 170px"
+      ></html:select>
+      <html:input type="text" id="sl-sourceLang" style="width: 110px" />
+    </hbox>
+  </vbox>
+
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="cache">
     <label
       ><html:h3 data-l10n-id="pref-head-prefetch-provider"></html:h3
     ></label>
@@ -134,6 +205,8 @@
         style="min-width: 240px"
         placeholder="sk-..."
       />
+      <html:button id="sl-prefetchApiKeyToggle" data-l10n-id="pref-key-show" />
+      <html:button id="sl-prefetchApiKeyClear" data-l10n-id="pref-key-clear" />
     </hbox>
 
     <hbox align="center" class="sl-row">
@@ -172,9 +245,16 @@
     </hbox>
     <html:div class="sl-hint" data-l10n-id="pref-model-hint"></html:div>
     <html:div id="sl-prefetch-model-status" class="sl-hint"></html:div>
+    <html:div id="sl-prefetch-effective-config" class="sl-effective"></html:div>
+    <hbox class="sl-row" style="margin-left: 186px; gap: 6px">
+      <html:button
+        id="sl-prefetchTestConnection"
+        data-l10n-id="pref-test-connection"
+      />
+    </hbox>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="behavior">
     <label><html:h3 data-l10n-id="pref-head-kind"></html:h3></label>
 
     <hbox align="center" class="sl-row">
@@ -215,7 +295,7 @@
     </hbox>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="behavior">
     <label><html:h3 data-l10n-id="pref-head-context"></html:h3></label>
 
     <html:div class="sl-row">
@@ -248,7 +328,7 @@
     </hbox>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="cache">
     <label><html:h3 data-l10n-id="pref-head-cache"></html:h3></label>
     <html:div class="sl-block-hint" data-l10n-id="pref-cache-hint"></html:div>
 
@@ -321,7 +401,7 @@
       <html:input
         type="number"
         id="sl-prefetchDelayMs"
-        min="1"
+        min="0"
         step="50"
         style="width: 90px"
       />
@@ -379,13 +459,10 @@
     <html:div id="sl-preprocessTasks" class="sl-task-list"></html:div>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="advanced">
     <label><html:h3 data-l10n-id="pref-head-prompts"></html:h3></label>
     <html:div class="sl-block-hint" data-l10n-id="pref-prompt-hint"></html:div>
-    <html:div
-      id="sl-prompt-status"
-      style="color: #b42318; min-height: 14px"
-    ></html:div>
+    <html:div id="sl-prompt-status" style="min-height: 14px"></html:div>
 
     <hbox align="center" class="sl-row">
       <html:label
@@ -417,12 +494,42 @@
       ></html:label>
       <html:input type="text" id="sl-promptWordName" style="min-width: 240px" />
     </hbox>
+    <html:label
+      for="sl-promptWord"
+      data-l10n-id="pref-system-prompt"
+    ></html:label>
     <html:textarea
       id="sl-promptWord"
       class="sl-prompt"
       spellcheck="false"
       style="min-height: 170px"
     ></html:textarea>
+    <html:label
+      for="sl-promptWordUser"
+      data-l10n-id="pref-user-prompt"
+    ></html:label>
+    <html:textarea
+      id="sl-promptWordUser"
+      class="sl-prompt"
+      spellcheck="false"
+      style="min-height: 90px"
+    ></html:textarea>
+    <html:div class="sl-prompt-tools">
+      <html:select id="sl-promptWordVariable"></html:select>
+      <html:button
+        id="sl-promptWordInsert"
+        data-l10n-id="pref-insert-variable"
+      />
+      <html:button
+        id="sl-promptWordPreviewButton"
+        data-l10n-id="pref-preview"
+      />
+    </html:div>
+    <html:div
+      id="sl-promptWordPreview"
+      class="sl-prompt-preview"
+      hidden="true"
+    ></html:div>
 
     <hbox align="center" class="sl-row" style="margin-top: 10px">
       <html:label
@@ -458,19 +565,49 @@
         style="min-width: 240px"
       />
     </hbox>
+    <html:label
+      for="sl-promptSentence"
+      data-l10n-id="pref-system-prompt"
+    ></html:label>
     <html:textarea
       id="sl-promptSentence"
       class="sl-prompt"
       spellcheck="false"
       style="min-height: 140px"
     ></html:textarea>
+    <html:label
+      for="sl-promptSentenceUser"
+      data-l10n-id="pref-user-prompt"
+    ></html:label>
+    <html:textarea
+      id="sl-promptSentenceUser"
+      class="sl-prompt"
+      spellcheck="false"
+      style="min-height: 80px"
+    ></html:textarea>
+    <html:div class="sl-prompt-tools">
+      <html:select id="sl-promptSentenceVariable"></html:select>
+      <html:button
+        id="sl-promptSentenceInsert"
+        data-l10n-id="pref-insert-variable"
+      />
+      <html:button
+        id="sl-promptSentencePreviewButton"
+        data-l10n-id="pref-preview"
+      />
+    </html:div>
+    <html:div
+      id="sl-promptSentencePreview"
+      class="sl-prompt-preview"
+      hidden="true"
+    ></html:div>
 
     <hbox style="margin-top: 6px">
       <html:button id="sl-reset-profiles" data-l10n-id="pref-reset-profiles" />
     </hbox>
   </vbox>
 
-  <vbox class="sl-section">
+  <vbox class="sl-section sl-tab-panel" data-sl-tab-panel="behavior">
     <label><html:h3 data-l10n-id="pref-head-ui"></html:h3></label>
 
     <html:div class="sl-row">
@@ -508,17 +645,17 @@
         style="width: 80px"
       />
     </hbox>
-    <html:div class="sl-row">
+    <html:div class="sl-row" id="sl-advanced-debug-row">
       <html:input type="checkbox" id="sl-debug" />
       <html:label for="sl-debug" data-l10n-id="pref-debug"></html:label>
     </html:div>
 
-    <html:div class="sl-row">
+    <html:div class="sl-row" id="sl-advanced-stream-row">
       <html:input type="checkbox" id="sl-stream" />
       <html:label for="sl-stream" data-l10n-id="pref-stream"></html:label>
     </html:div>
 
-    <hbox align="center" class="sl-row">
+    <hbox align="center" class="sl-row" id="sl-advanced-timeout-row">
       <html:label
         for="sl-requestTimeoutMs"
         data-l10n-id="pref-timeout"
@@ -531,6 +668,14 @@
         style="width: 100px"
       />
     </hbox>
+  </vbox>
+
+  <vbox
+    id="sl-advancedRuntime"
+    class="sl-section sl-tab-panel"
+    data-sl-tab-panel="advanced"
+  >
+    <label><html:h3 data-l10n-id="pref-head-runtime"></html:h3></label>
   </vbox>
 </groupbox>
 

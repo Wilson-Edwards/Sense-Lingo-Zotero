@@ -178,7 +178,8 @@ export function parseBatchOutput(
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
-    const lines = normalizedLines.length === expected ? normalizedLines : rawLines;
+    const lines =
+      normalizedLines.length === expected ? normalizedLines : rawLines;
     // A trailing "Hope this helps." after the last block is commentary, not a
     // dropped item; a short block is always a failure.
     const blockLines =

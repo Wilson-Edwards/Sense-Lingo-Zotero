@@ -8,9 +8,10 @@ describe("isEligibleWordSelection", () => {
     expect(isEligibleWordSelection("—", "zh-CN")).toBe(false);
   });
 
-  it("rejects selections already in the target language", () => {
-    expect(isEligibleWordSelection("理想", "zh-CN")).toBe(false);
-    expect(isEligibleWordSelection("translation", "en-US")).toBe(false);
+  it("does not guess language from a shared writing system", () => {
+    expect(isEligibleWordSelection("bonjour", "en-US")).toBe(true);
+    expect(isEligibleWordSelection("translation", "en-US")).toBe(true);
+    expect(isEligibleWordSelection("理想", "zh-CN")).toBe(true);
   });
 
   it("keeps source-language and mixed-script selections", () => {

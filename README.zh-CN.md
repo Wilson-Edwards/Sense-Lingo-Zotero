@@ -97,11 +97,11 @@ npm run build        # 产物：.scaffold/build/sense-lingo.xpi
 | API Key        | 对应服务商的 Key（必填）                                                            |
 | 接口地址、模型 | 留空即用预设，也可自行填写                                                          |
 
-| provider      | 默认接口地址                             | 默认模型                         |
-| ------------- | ---------------------------------------- | -------------------------------- |
-| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
-| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
-| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
+| provider      | 默认接口地址                             | 默认模型                          |
+| ------------- | ---------------------------------------- | --------------------------------- |
+| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                     |
+| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                   |
+| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash`  |
 | `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash-fast` |
 
 每个服务商的 Key / 地址 / 模型会**分别保存**，来回切换不会互相覆盖。

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  POPUP_RESULT_MAX_ENTRIES,
   POPUP_RESULT_TTL_MS,
   peekPopupTranslation,
   refreshPopupTranslation,
@@ -57,6 +58,35 @@ describe("translateInPopup", () => {
     await translateInPopup(doc, "mitigate", request, 1000);
     await translateInPopup(doc, "inherent", request, 1010);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps concurrent selections independently reusable", async () => {
+    const doc = makeDoc();
+    const firstRequest = vi.fn(() => succeeds("减轻"));
+    const secondRequest = vi.fn(() => succeeds("固有的"));
+    const first = translateInPopup(doc, "mitigate", firstRequest, 1000);
+    const second = translateInPopup(doc, "inherent", secondRequest, 1001);
+
+    expect(peekPopupTranslation(doc, "mitigate", 1002)).toBe(first);
+    expect(peekPopupTranslation(doc, "inherent", 1002)).toBe(second);
+    expect(firstRequest).toHaveBeenCalledTimes(1);
+    expect(secondRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds the number of remembered selections per document", () => {
+    const doc = makeDoc();
+    for (let index = 0; index <= POPUP_RESULT_MAX_ENTRIES; index += 1) {
+      translateInPopup(
+        doc,
+        `word-${index}`,
+        () => succeeds(String(index)),
+        1000,
+      );
+    }
+    expect(peekPopupTranslation(doc, "word-0", 1001)).toBeUndefined();
+    expect(
+      peekPopupTranslation(doc, `word-${POPUP_RESULT_MAX_ENTRIES}`, 1001),
+    ).toBeDefined();
   });
 
   it("retries failures instead of caching them", async () => {

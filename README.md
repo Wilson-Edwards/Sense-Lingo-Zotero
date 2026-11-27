@@ -108,11 +108,11 @@ Open `Edit` → `Settings` → `Sense Lingo`:
 | API Key         | The key for that provider (required)                                                |
 | Base URL, Model | Leave blank to use the preset; fill them in for a custom endpoint                   |
 
-| provider      | Default base URL                         | Default model                    |
-| ------------- | ---------------------------------------- | -------------------------------- |
-| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                    |
-| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                  |
-| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash` |
+| provider      | Default base URL                         | Default model                     |
+| ------------- | ---------------------------------------- | --------------------------------- |
+| `openai`      | `https://api.openai.com/v1`              | `gpt-4o-mini`                     |
+| `deepseek`    | `https://api.deepseek.com/v1`            | `deepseek-chat`                   |
+| `clinepass`   | `https://api.cline.bot/api/v1`           | `cline-pass/deepseek-v4.1-flash`  |
 | `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-flash-fast` |
 
 Credentials (key / URL / model) are stored **per provider**, so switching back and forth never

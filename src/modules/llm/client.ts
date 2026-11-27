@@ -16,24 +16,49 @@ export interface ChatMessage {
 }
 
 export type LlmErrorCode =
-  "NOT_CONFIGURED" | "TIMEOUT" | "HTTP" | "NETWORK" | "PARSE" | "EMPTY";
+  | "NOT_CONFIGURED"
+  | "TIMEOUT"
+  | "ABORTED"
+  | "HTTP"
+  | "NETWORK"
+  | "PARSE"
+  | "EMPTY";
 
 export class LlmError extends Error {
   public readonly code: LlmErrorCode;
   public readonly status?: number;
   public readonly detail?: string;
+  public readonly retryAfterMs?: number;
 
   constructor(
     code: LlmErrorCode,
     message: string,
-    options: { status?: number; detail?: string } = {},
+    options: { status?: number; detail?: string; retryAfterMs?: number } = {},
   ) {
     super(message);
     this.name = "LlmError";
     this.code = code;
     this.status = options.status;
     this.detail = options.detail;
+    this.retryAfterMs = options.retryAfterMs;
   }
+}
+
+/** Parse either Retry-After seconds or an HTTP date. */
+export function parseRetryAfter(
+  value: string | null | undefined,
+  now = Date.now(),
+): number | undefined {
+  const raw = value?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - now) : undefined;
 }
 
 /** Strip trailing slashes and add `/v1` when the user typed a bare host. */
@@ -261,6 +286,16 @@ export function extractErrorMessage(payload: unknown): string {
     }
   }
   return "";
+}
+
+/** Never let a provider echo credentials into UI errors or debug logs. */
+export function redactCredential(text: string, apiKey = ""): string {
+  let safe = text ?? "";
+  const key = apiKey.trim();
+  if (key) {
+    safe = safe.split(key).join("[REDACTED]");
+  }
+  return safe.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/giu, "Bearer [REDACTED]");
 }
 
 /** Pull the incremental text out of one streamed chat-completions chunk. */
@@ -528,6 +563,8 @@ export interface ChatRequestOptions {
   fetchImpl?: typeof fetch;
   /** Overrides `config.timeoutMs`. */
   timeoutMs?: number;
+  /** Cancels the request independently of its inactivity timeout. */
+  signal?: AbortSignal;
   /**
    * Called with the text of every streamed chunk, so the UI can render the
    * translation while it is still being generated. Only used when
@@ -540,6 +577,8 @@ export interface ChatResult {
   content: string;
   model: string;
   elapsedMs: number;
+  /** True when at least one incremental delta was received. */
+  streamed: boolean;
 }
 
 /**
@@ -613,6 +652,13 @@ export async function chatCompletion(
       ? new AbortController()
       : null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+  const abortFromCaller = (): void => controller?.abort();
+  if (options.signal?.aborted) {
+    abortFromCaller();
+  } else {
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
   /**
    * With streaming, a response can legitimately stay open longer than one
    * timeout window, so the timer measures inactivity and is re-armed each time
@@ -625,7 +671,10 @@ export async function chatCompletion(
     if (timer) {
       clearTimeout(timer);
     }
-    timer = setTimeout(() => controller.abort(), timeoutMs);
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
   };
 
   const hintKey = thinkingHintKey(config);
@@ -674,10 +723,14 @@ export async function chatCompletion(
       } catch {
         // Keep the raw body as the detail below.
       }
-      const detail = extractErrorMessage(payload) || text.slice(0, 200);
+      const detail = redactCredential(
+        extractErrorMessage(payload) || text.slice(0, 200),
+        config.apiKey,
+      );
       throw new LlmError("HTTP", `HTTP ${response.status}: ${detail}`, {
         status: response.status,
         detail,
+        retryAfterMs: parseRetryAfter(response.headers?.get?.("retry-after")),
       });
     }
 
@@ -692,6 +745,7 @@ export async function chatCompletion(
       content,
       model: parsed.model || config.model,
       elapsedMs: Date.now() - startedAt,
+      streamed,
     };
   };
 
@@ -725,6 +779,9 @@ export async function chatCompletion(
     }
     const name = (error as { name?: string })?.name;
     if (name === "AbortError") {
+      if (options.signal?.aborted && !timedOut) {
+        throw new LlmError("ABORTED", "Request was cancelled");
+      }
       throw new LlmError("TIMEOUT", `Request timed out after ${timeoutMs}ms`);
     }
     throw new LlmError(
@@ -736,6 +793,7 @@ export async function chatCompletion(
     if (timer) {
       clearTimeout(timer);
     }
+    options.signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -808,7 +866,10 @@ export async function fetchModelIds(
       } catch {
         // Keep the raw body as the detail below.
       }
-      const detail = extractErrorMessage(payload) || text.slice(0, 200);
+      const detail = redactCredential(
+        extractErrorMessage(payload) || text.slice(0, 200),
+        config.apiKey,
+      );
       throw new LlmError("HTTP", `HTTP ${response.status}: ${detail}`, {
         status: response.status,
         detail,

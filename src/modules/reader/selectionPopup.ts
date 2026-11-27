@@ -32,6 +32,7 @@ import {
 } from "./popupTranslation";
 import {
   clearPartial,
+  finishStream,
   forEachLiveSlot,
   rememberPartial,
   trackSlot,
@@ -404,6 +405,7 @@ function onRenderTextSelectionPopup(event: SelectionPopupEvent): void {
       .finally(() => {
         running = false;
         refreshButton.disabled = false;
+        finishStream(doc, cacheKey);
       });
   };
 

@@ -169,20 +169,33 @@ function registerAutoRun(): () => void {
     return () => undefined;
   }
   const started = new Set<number>();
+  const inFlight = new Set<number>();
   const handler = (event: ReaderEvent): void => {
     if (!getBooleanPref("prefetchOnOpen", false)) {
       return;
     }
     const itemID = event.reader?.itemID;
-    if (!itemID || started.has(itemID)) {
+    if (!itemID || started.has(itemID) || inFlight.has(itemID)) {
       return;
     }
-    started.add(itemID);
     if (!isEpubAttachment(Zotero.Items.get(itemID))) {
       return;
     }
     // Auto-run skips the confirmation dialog: the user opted in explicitly.
-    void startPreprocess(itemID, { confirm: false });
+    inFlight.add(itemID);
+    void startPreprocess(itemID, { confirm: false }).then(
+      (result) => {
+        inFlight.delete(itemID);
+        if (
+          result.status === "done" ||
+          result.status === "paused" ||
+          result.status === "cancelled"
+        ) {
+          started.add(itemID);
+        }
+      },
+      () => inFlight.delete(itemID),
+    );
   };
   try {
     reader.registerEventListener("renderReader", handler, config.addonID);
